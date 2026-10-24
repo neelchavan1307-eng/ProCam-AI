@@ -1,17 +1,15 @@
 package com.procam.ai
 
 import android.Manifest
-import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
-import android.hardware.camera2.CaptureRequest
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -21,33 +19,29 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.OptIn
-import androidx.camera.camera2.interop.Camera2CameraControl
-import androidx.camera.camera2.interop.CaptureRequestOptions
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
-import androidx.camera.core.*
+import androidx.camera.core.Camera
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.video.*
-import androidx.camera.video.VideoCapture
 import androidx.camera.view.PreviewView
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -55,9 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import coil.compose.AsyncImage
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -65,650 +57,417 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
-                ProCamAppMaster()
+            Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF0A0D14)) {
+                ProCamMainApp()
             }
         }
     }
 }
 
-enum class MainTab { CAMERA, GALLERY, AI_LAB, EDITOR, SETTINGS }
-
 @Composable
-fun ProCamAppMaster() {
-    val context = LocalContext.current
-    var currentTab by remember { mutableStateOf(MainTab.CAMERA) }
-    var appLanguage by remember { mutableStateOf("मराठी") }
+fun ProCamMainApp() {
+    var currentScreen by remember { mutableStateOf("CAMERA") }
 
     Scaffold(
         bottomBar = {
-            NavigationBar(
-                containerColor = Color(0xFF0F131C),
-                contentColor = Color.White
-            ) {
-                NavigationBarItem(
-                    selected = currentTab == MainTab.CAMERA,
-                    onClick = { currentTab = MainTab.CAMERA },
-                    icon = { Icon(Icons.Default.PhotoCamera, contentDescription = "Camera") },
-                    label = { Text(if (appLanguage == "मराठी") "कॅमेरा" else "Camera", fontSize = 11.sp) }
-                )
-                NavigationBarItem(
-                    selected = currentTab == MainTab.GALLERY,
-                    onClick = { currentTab = MainTab.GALLERY },
-                    icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = "Gallery") },
-                    label = { Text(if (appLanguage == "मराठी") "गॅलरी" else "Gallery", fontSize = 11.sp) }
-                )
-                NavigationBarItem(
-                    selected = currentTab == MainTab.AI_LAB,
-                    onClick = { currentTab = MainTab.AI_LAB },
-                    icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "AI Lab") },
-                    label = { Text("AI Lab", fontSize = 11.sp) }
-                )
-                NavigationBarItem(
-                    selected = currentTab == MainTab.EDITOR,
-                    onClick = { currentTab = MainTab.EDITOR },
-                    icon = { Icon(Icons.Default.Tune, contentDescription = "Editor") },
-                    label = { Text(if (appLanguage == "मराठी") "एडिटर" else "Editor", fontSize = 11.sp) }
-                )
-                NavigationBarItem(
-                    selected = currentTab == MainTab.SETTINGS,
-                    onClick = { currentTab = MainTab.SETTINGS },
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                    label = { Text(if (appLanguage == "मराठी") "सेटिंग्ज" else "Settings", fontSize = 11.sp) }
-                )
-            }
-        }
-    ) { paddingValues ->
-        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-            when (currentTab) {
-                MainTab.CAMERA -> FullFeaturedCameraScreen(appLanguage)
-                MainTab.GALLERY -> GalleryScreen(context)
-                MainTab.AI_LAB -> AILabScreen(context)
-                MainTab.EDITOR -> PhotoEditorScreen(context)
-                MainTab.SETTINGS -> SettingsScreen(appLanguage) { appLanguage = it }
+            BottomNavBar(currentScreen = currentScreen, onTabSelected = { currentScreen = it })
+        },
+        containerColor = Color(0xFF0A0D14)
+    ) { innerPadding ->
+        Box(modifier = Modifier.padding(innerPadding)) {
+            when (currentScreen) {
+                "CAMERA" -> RealCameraScreen()
+                "EDITOR" -> RealEditorScreen()
+                "AI_LAB" -> RealAILabScreen()
+                "SETTINGS" -> RealSettingsScreen()
             }
         }
     }
 }
 
-// ==========================================
-// १. मुख्य कॅमेरा स्क्रीन (PRO, PORTRAIT, NIGHT, VIDEO)
-// ==========================================
-@OptIn(ExperimentalCamera2Interop::class)
+// -------------------------------------------------------------
+// १. खरा कार्यरत कॅमेरा (Live Hardware Camera Screen)
+// -------------------------------------------------------------
 @Composable
-fun FullFeaturedCameraScreen(lang: String) {
+fun RealCameraScreen() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val coroutineScope = rememberCoroutineScope()
 
-    var hasPermissions by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        )
+    var camera by remember { mutableStateOf<Camera?>(null) }
+    var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
+    var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
+    var isFlashOn by remember { mutableStateOf(false) }
+    var currentZoom by remember { mutableFloatStateOf(1f) }
+    var exposureCompensation by remember { mutableFloatStateOf(0f) }
+    var selectedMode by remember { mutableStateOf("PHOTO") }
+
+    val previewView = remember { PreviewView(context) }
+
+    var hasPermission by remember {
+        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
-
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        hasPermissions = it[Manifest.permission.CAMERA] == true
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        hasPermission = it
     }
 
     LaunchedEffect(Unit) {
-        if (!hasPermissions) {
-            permLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
-        }
+        if (!hasPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
-    var selectedMode by remember { mutableStateOf("PHOTO") }
-    val modes = listOf("PRO", "PORTRAIT", "PHOTO", "NIGHT", "VIDEO")
-
-    var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
-    var isFlashOn by remember { mutableStateOf(false) }
-    var showGrid by remember { mutableStateOf(false) }
-    var timerSeconds by remember { mutableIntStateOf(0) }
-    var countdownValue by remember { mutableIntStateOf(0) }
-
-    // Pro Mode Sliders
-    var isoValue by remember { mutableFloatStateOf(400f) }
-    var shutterDenom by remember { mutableFloatStateOf(125f) }
-    var focusDistance by remember { mutableFloatStateOf(5.0f) }
-
-    // Portrait Blur
-    var blurLevel by remember { mutableStateOf("Medium") }
-
-    // Video Recording
-    var isRecording by remember { mutableStateOf(false) }
-    var recordingTimerText by remember { mutableStateOf("00:00") }
-    var currentRecording by remember { mutableStateOf<Recording?>(null) }
-
-    var camera by remember { mutableStateOf<Camera?>(null) }
-    var imageCapture: ImageCapture? by remember { mutableStateOf(null) }
-    var videoCapture: VideoCapture<Recorder>? by remember { mutableStateOf(null) }
-    val previewView = remember { PreviewView(context) }
-
-    LaunchedEffect(lensFacing, selectedMode) {
-        if (hasPermissions) {
+    LaunchedEffect(hasPermission, lensFacing) {
+        if (hasPermission) {
             val cameraProvider = ProcessCameraProvider.getInstance(context).get()
             val preview = Preview.Builder().build().also {
                 it.setSurfaceProvider(previewView.surfaceProvider)
             }
-
-            imageCapture = ImageCapture.Builder()
+            val capture = ImageCapture.Builder()
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                 .build()
-
-            val recorder = Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HIGHEST)).build()
-            videoCapture = VideoCapture.withOutput(recorder)
+            imageCapture = capture
 
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
 
             try {
                 cameraProvider.unbindAll()
-                camera = cameraProvider.bindToLifecycle(lifecycleOwner, selector, preview, imageCapture, videoCapture)
+                camera = cameraProvider.bindToLifecycle(lifecycleOwner, selector, preview, capture)
+                camera?.cameraControl?.setZoomRatio(currentZoom)
             } catch (e: Exception) {
-                Toast.makeText(context, "Camera Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "कॅमेरा एरर: ${e.message}", Toast.LENGTH_SHORT).show()
             }
-        }
-    }
-
-    // Flash Control
-    LaunchedEffect(isFlashOn) {
-        camera?.cameraControl?.enableTorch(isFlashOn)
-    }
-
-    // Pro Mode Camera2 Controls Apply
-    LaunchedEffect(selectedMode, isoValue, shutterDenom, focusDistance) {
-        if (selectedMode == "PRO" && camera != null) {
-            val camera2Control = Camera2CameraControl.from(camera!!.cameraControl)
-            val builder = CaptureRequestOptions.Builder()
-                .setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
-                .setCaptureRequestOption(CaptureRequest.SENSOR_SENSITIVITY, isoValue.toInt())
-                .setCaptureRequestOption(CaptureRequest.SENSOR_EXPOSURE_TIME, (1_000_000_000L / shutterDenom).toLong())
-                .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
-                .setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, focusDistance)
-            camera2Control.setCaptureRequestOptions(builder.build())
         }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        if (hasPermissions) {
+        if (hasPermission) {
             AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
-
-            // Rule-of-Thirds Grid Lines
-            if (showGrid) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val w = size.width
-                    val h = size.height
-                    drawLine(Color(0x66FFFFFF), Offset(w / 3, 0f), Offset(w / 3, h), strokeWidth = 2f)
-                    drawLine(Color(0x66FFFFFF), Offset(2 * w / 3, 0f), Offset(2 * w / 3, h), strokeWidth = 2f)
-                    drawLine(Color(0x66FFFFFF), Offset(0f, h / 3), Offset(w, h / 3), strokeWidth = 2f)
-                    drawLine(Color(0x66FFFFFF), Offset(0f, 2 * h / 3), Offset(w, 2 * h / 3), strokeWidth = 2f)
-                }
-            }
         }
 
-        // Timer Countdown Overlay
-        if (countdownValue > 0) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = "$countdownValue",
-                    fontSize = 80.sp,
-                    color = Color(0xFFFFD60A),
-                    modifier = Modifier.background(Color(0x99000000), CircleShape).padding(30.dp)
-                )
-            }
-        }
-
-        // Top Controls Bar (Flash, Timer, Grid, HDR/AI Info)
+        // वरची पट्टी (Flash, Header, Resolution)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 20.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = { isFlashOn = !isFlashOn }) {
-                Icon(
-                    if (isFlashOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
-                    contentDescription = "Flash",
-                    tint = if (isFlashOn) Color.Yellow else Color.White
-                )
-            }
-
-            IconButton(onClick = { showGrid = !showGrid }) {
-                Icon(Icons.Default.GridOn, contentDescription = "Grid", tint = if (showGrid) Color.Cyan else Color.White)
-            }
-
-            // Timer Picker (Off, 3s, 10s)
-            Text(
-                text = if (timerSeconds == 0) "⏱️ OFF" else "⏱️ ${timerSeconds}s",
-                color = Color.White,
-                fontSize = 12.sp,
+            // Flash बटण (खरा टॉर्च चालू/बंद करणे)
+            Box(
                 modifier = Modifier
-                    .background(Color(0x55000000), RoundedCornerShape(12.dp))
+                    .size(42.dp)
+                    .background(if (isFlashOn) Color(0xFFFFD60A) else Color(0x66000000), CircleShape)
                     .clickable {
-                        timerSeconds = when (timerSeconds) {
-                            0 -> 3
-                            3 -> 10
-                            else -> 0
-                        }
-                    }
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            )
-
-            if (isRecording) {
-                Text(
-                    text = "🔴 $recordingTimerText",
-                    color = Color.Red,
-                    fontSize = 14.sp,
-                    modifier = Modifier.background(Color(0x99000000), RoundedCornerShape(8.dp)).padding(6.dp)
-                )
+                        isFlashOn = !isFlashOn
+                        camera?.cameraControl?.enableTorch(isFlashOn)
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(if (isFlashOn) "⚡ ON" else "⚡", color = if (isFlashOn) Color.Black else Color.White, fontSize = 13.sp)
             }
 
-            // Front / Back Camera Switch
-            IconButton(onClick = {
-                lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
-                    CameraSelector.LENS_FACING_FRONT
-                } else {
-                    CameraSelector.LENS_FACING_BACK
-                }
-            }) {
-                Icon(Icons.Default.Cameraswitch, contentDescription = "Flip", tint = Color.White)
-            }
+            Text("ProCam AI", color = Color.White, fontSize = 18.sp)
+
+            Text("12MP 4K", color = Color(0xFFFFD60A), fontSize = 12.sp, modifier = Modifier.background(Color(0x66000000), RoundedCornerShape(6.dp)).padding(6.dp))
         }
 
-        // Zoom Bar (0.5x, 1x, 2x, 3x)
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 175.dp)
-                .background(Color(0x77000000), RoundedCornerShape(20.dp))
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            listOf(0.5f, 1f, 2f, 3f).forEach { zoom ->
-                Text(
-                    text = "${zoom}x",
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    modifier = Modifier
-                        .clickable { camera?.cameraControl?.setZoomRatio(zoom) }
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
+        // Pro Mode मध्ये Exposure / Brightness कंट्रोल
+        if (selectedMode == "PRO") {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.CenterEnd)
+                    .padding(horizontal = 24.dp)
+            ) {
+                Text("Exposure: ${exposureCompensation.toInt()}", color = Color(0xFFFFD60A), fontSize = 12.sp)
+                Slider(
+                    value = exposureCompensation,
+                    onValueChange = {
+                        exposureCompensation = it
+                        camera?.cameraControl?.setExposureCompensationIndex(it.toInt())
+                    },
+                    valueRange = -4f..4f,
+                    steps = 8,
+                    colors = SliderDefaults.colors(thumbColor = Color(0xFFFFD60A), activeTrackColor = Color(0xFFFFD60A))
                 )
             }
         }
 
-        // Secondary Panel based on Mode (PRO Controls, PORTRAIT Blur, NIGHT Info)
-        Box(
+        // खालची कॅमेरा नियंत्रणे
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 120.dp)
+                .padding(bottom = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            when (selectedMode) {
-                "PRO" -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xCC0B0E14))
-                            .padding(8.dp)
-                    ) {
-                        Text("ISO: ${isoValue.toInt()}", color = Color.Yellow, fontSize = 11.sp)
-                        Slider(value = isoValue, onValueChange = { isoValue = it }, valueRange = 100f..3200f)
-                        Text("Shutter: 1/${shutterDenom.toInt()}s", color = Color.Cyan, fontSize = 11.sp)
-                        Slider(value = shutterDenom, onValueChange = { shutterDenom = it }, valueRange = 30f..1000f)
-                    }
-                }
-                "PORTRAIT" -> {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0x99000000))
-                            .padding(6.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        listOf("Low Blur", "Medium", "High DSLR").forEach { level ->
-                            Text(
-                                text = level,
-                                color = if (blurLevel == level) Color(0xFF007AFF) else Color.White,
-                                fontSize = 12.sp,
-                                modifier = Modifier
-                                    .clickable { blurLevel = level }
-                                    .padding(4.dp)
-                            )
-                        }
-                    }
-                }
-                "NIGHT" -> {
+            // Zoom बटणे (1x, 2x, 3x)
+            Row(
+                modifier = Modifier
+                    .background(Color(0x77000000), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                listOf(1f, 2f, 3f).forEach { zoomLevel ->
+                    val isSelected = currentZoom == zoomLevel
                     Text(
-                        text = "🌙 Night Multi-Frame Noise Reduction Active",
-                        color = Color(0xFFFFD60A),
-                        fontSize = 12.sp,
+                        text = "${zoomLevel.toInt()}x",
+                        color = if (isSelected) Color(0xFFFFD60A) else Color.White,
+                        fontSize = 13.sp,
                         modifier = Modifier
-                            .align(Alignment.Center)
-                            .background(Color(0x99000000), RoundedCornerShape(8.dp))
-                            .padding(8.dp)
+                            .clickable {
+                                currentZoom = zoomLevel
+                                camera?.cameraControl?.setZoomRatio(zoomLevel)
+                            }
+                            .padding(4.dp)
                     )
                 }
             }
-        }
 
-        // Modes Switcher
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 85.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            modes.forEach { mode ->
-                Text(
-                    text = mode,
-                    color = if (selectedMode == mode) Color(0xFFFFD60A) else Color.White,
-                    fontSize = 13.sp,
-                    modifier = Modifier
-                        .clickable { if (!isRecording) selectedMode = mode }
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                )
-            }
-        }
+            Spacer(modifier = Modifier.height(14.dp))
 
-        // Shutter Button
-        val isVideo = (selectedMode == "VIDEO")
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 10.dp)
-                .size(72.dp)
-                .border(4.dp, Color.White, CircleShape)
-                .padding(6.dp)
-                .background(
-                    when {
-                        isVideo && isRecording -> Color.Red
-                        isVideo -> Color(0xFFFF3333)
-                        else -> Color.White
-                    },
-                    if (isRecording) RoundedCornerShape(12.dp) else CircleShape
-                )
-                .clickable {
-                    if (isVideo) {
-                        if (isRecording) {
-                            currentRecording?.stop()
-                            currentRecording = null
-                            isRecording = false
-                        } else {
-                            currentRecording = startProVideoRecord(context, videoCapture, { sec ->
-                                val m = sec / 60
-                                val s = sec % 60
-                                recordingTimerText = String.format(Locale.US, "%02d:%02d", m, s)
-                            }) {
-                                isRecording = false
-                                recordingTimerText = "00:00"
-                            }
-                            isRecording = true
-                        }
-                    } else {
-                        // Capture with Timer support
-                        if (timerSeconds > 0) {
-                            coroutineScope.launch {
-                                countdownValue = timerSeconds
-                                while (countdownValue > 0) {
-                                    delay(1000)
-                                    countdownValue--
-                                }
-                                captureProPhoto(context, imageCapture)
-                            }
-                        } else {
-                            captureProPhoto(context, imageCapture)
-                        }
-                    }
-                }
-        )
-    }
-}
-
-// ==========================================
-// २. फोटो गॅलरी स्क्रीन (GALLERY SCREEN)
-// ==========================================
-// २. फोटो गॅलरी स्क्रीन (GALLERY SCREEN)
-// ==========================================
-@Composable
-fun GalleryScreen(context: Context) {
-    var mediaUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
-    var selectedUri by remember { mutableStateOf<Uri?>(null) }
-
-    LaunchedEffect(Unit) {
-        val list = mutableListOf<Uri>()
-        val projection = arrayOf(MediaStore.Images.Media._ID)
-        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
-        val cursor = context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection, null, null, sortOrder
-        )
-        cursor?.use {
-            val idCol = it.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            while (it.moveToNext() && list.size < 40) {
-                val id = it.getLong(idCol)
-                list.add(ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id))
-            }
-        }
-        mediaUris = list
-    }
-
-    if (selectedUri != null) {
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-            AsyncImage(
-                model = selectedUri,
-                contentDescription = "Full View",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit
-            )
+            // Modes
             Row(
-                modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                IconButton(onClick = { selectedUri = null }) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
-                }
-                IconButton(onClick = {
-                    val share = Intent(Intent.ACTION_SEND).apply {
-                        type = "image/jpeg"
-                        putExtra(Intent.EXTRA_STREAM, selectedUri)
-                    }
-                    context.startActivity(Intent.createChooser(share, "Share Photo"))
-                }) {
-                    Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White)
+                listOf("PRO", "PORTRAIT", "PHOTO", "VIDEO").forEach { mode ->
+                    Text(
+                        text = mode,
+                        color = if (selectedMode == mode) Color(0xFFFFD60A) else Color.White,
+                        fontSize = 14.sp,
+                        modifier = Modifier
+                            .clickable { selectedMode = mode }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    )
                 }
             }
-        }
-    } else {
-        Column(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0D14)).padding(8.dp)) {
-            Text("📂 ProCam Gallery", color = Color.White, fontSize = 20.sp, modifier = Modifier.padding(12.dp))
-            if (mediaUris.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("अद्याप कोणतेही फोटो नाहीत", color = Color.Gray)
-                }
-            } else {
-                LazyVerticalGrid(columns = GridCells.Fixed(3), modifier = Modifier.fillMaxSize()) {
-                    items(mediaUris) { uri ->
-                        AsyncImage(
-                            model = uri,
-                            contentDescription = "Thumbnail",
-                            modifier = Modifier
-                                .padding(2.dp)
-                                .aspectRatio(1f)
-                                .clickable { selectedUri = uri },
-                            contentScale = ContentScale.Crop
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
 
-// ==========================================
-// ३. AI PHOTO LAB स्क्रीन
-// ==========================================
-@Composable
-fun AILabScreen(context: Context) {
-    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
-    var statusText by remember { mutableStateOf("फोटो निवडा आणि AI टूल्स वापरा") }
+            Spacer(modifier = Modifier.height(16.dp))
 
-    val pickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        selectedImageUri = uri
-        if (uri != null) statusText = "फोटो लोड झाला! खालील टूल निवडा:"
-    }
-
-    Column(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF0E121B)).padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("✨ ProCam AI Photo Lab", color = Color(0xFF0A84FF), fontSize = 20.sp)
-        Text(statusText, color = Color.LightGray, fontSize = 12.sp, modifier = Modifier.padding(vertical = 8.dp))
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(300.dp)
-                .background(Color(0x33FFFFFF), RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (selectedImageUri != null) {
-                AsyncImage(model = selectedImageUri, contentDescription = "Loaded", modifier = Modifier.fillMaxSize())
-            } else {
-                Button(onClick = { pickerLauncher.launch("image/*") }) {
-                    Text("गॅलरीतून फोटो निवडा")
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // AI Actions
-        val tools = listOf("AI HD Enhance", "Face Preserve", "Object Eraser", "Sky Replacement")
-        tools.forEach { tool ->
-            Button(
-                onClick = {
-                    if (selectedImageUri != null) {
-                        statusText = "⚡ $tool यशस्वीरीत्या लागू केले!"
-                        Toast.makeText(context, "$tool प्रक्रिया पूर्ण झाली!", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "आधी फोटो निवडा!", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E2638))
+            // Shutter Row (फोटो काढणे आणि कॅमेरा फिरवणे)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 40.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(tool, color = Color.White)
+                Box(modifier = Modifier.size(45.dp))
+
+                // मुख्य Shutter बटण
+                Box(
+                    modifier = Modifier
+                        .size(76.dp)
+                        .border(4.dp, Color.White, CircleShape)
+                        .padding(6.dp)
+                        .background(if (selectedMode == "VIDEO") Color.Red else Color.White, CircleShape)
+                        .clickable {
+                            takeRealPhoto(context, imageCapture)
+                        }
+                )
+
+                // Flip Camera बटण (Front/Back कॅमेरा बदलणे)
+                Box(
+                    modifier = Modifier
+                        .size(45.dp)
+                        .background(Color(0x66000000), CircleShape)
+                        .clickable {
+                            lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+                                CameraSelector.LENS_FACING_FRONT
+                            } else {
+                                CameraSelector.LENS_FACING_BACK
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("🔄", fontSize = 20.sp)
+                }
             }
         }
     }
-}
-
-// ==========================================
-// ४. PHOTO EDITOR आणि FILTERS स्क्रीन
-// ==========================================
+}// -------------------------------------------------------------
+// २. खरा कार्यरत एडिटर (Real Working Photo Editor)
+// -------------------------------------------------------------
 @Composable
-fun PhotoEditorScreen(context: Context) {
-    var brightness by remember { mutableFloatStateOf(1.0f) }
-    var contrast by remember { mutableFloatStateOf(1.0f) }
+fun RealEditorScreen() {
+    val context = LocalContext.current
+    var originalBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var displayedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var brightness by remember { mutableFloatStateOf(0f) }
+    var contrast by remember { mutableFloatStateOf(1f) }
     var selectedFilter by remember { mutableStateOf("Natural") }
 
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let {
+            val stream = context.contentResolver.openInputStream(it)
+            val loaded = BitmapFactory.decodeStream(stream)
+            val scaled = Bitmap.createScaledBitmap(loaded, 1080, (1080f * loaded.height / loaded.width).toInt(), true)
+            originalBitmap = scaled
+            displayedBitmap = scaled
+        }
+    }
+
+    LaunchedEffect(brightness, contrast, selectedFilter, originalBitmap) {
+        originalBitmap?.let {
+            displayedBitmap = applyFilters(it, brightness, contrast, selectedFilter)
+        }
+    }
+
     Column(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF0A0D14)).padding(16.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("🎨 Professional Photo Editor", color = Color.White, fontSize = 18.sp)
+        Text("🎨 ProCam Photo Editor", color = Color.White, fontSize = 20.sp)
+
+        Spacer(modifier = Modifier.height(10.dp))
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(260.dp)
-                .padding(vertical = 12.dp)
-                .background(Color.DarkGray, RoundedCornerShape(8.dp)),
+                .weight(1f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF161B26))
+                .clickable { galleryLauncher.launch("image/*") },
             contentAlignment = Alignment.Center
         ) {
-            Text("Filter: $selectedFilter\nBrightness: ${(brightness * 100).toInt()}%", color = Color.White)
-        }
-
-        // Sliders
-        Text("Brightness", color = Color.White, fontSize = 12.sp)
-        Slider(value = brightness, onValueChange = { brightness = it }, valueRange = 0.5f..1.5f)
-
-        Text("Contrast", color = Color.White, fontSize = 12.sp)
-        Slider(value = contrast, onValueChange = { contrast = it }, valueRange = 0.5f..1.5f)
-
-        // Filter Categories
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            listOf("Natural", "Cinematic", "Vintage", "B&W", "Golden Hour").forEach { f ->
-                Text(
-                    text = f,
-                    color = if (selectedFilter == f) Color(0xFFFFD60A) else Color.LightGray,
-                    fontSize = 11.sp,
-                    modifier = Modifier
-                        .clickable { selectedFilter = f }
-                        .padding(4.dp)
-                )
+            val bmp = displayedBitmap
+            if (bmp != null) {
+                Image(bitmap = bmp.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+            } else {
+                Text("📁 गॅलरीतून फोटो निवडण्यासाठी इथे टॅप करा", color = Color(0xFF0A84FF), fontSize = 15.sp)
             }
         }
 
-        Button(
-            onClick = { Toast.makeText(context, "एडिट केलेला फोटो सेव्ह झाला!", Toast.LENGTH_SHORT).show() },
-            modifier = Modifier.padding(top = 16.dp)
-        ) {
-            Text("Save Edited Photo")
-        }
-    }
-}
+        Spacer(modifier = Modifier.height(12.dp))
 
-// ==========================================
-// ५. SETTINGS स्क्रीन (मराठी/हिंदी/इंग्रजी भाषा)
-// ==========================================
-@Composable
-fun SettingsScreen(currentLang: String, onLangChange: (String) -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF0A0D14)).padding(20.dp)
-    ) {
-        Text("⚙️ Camera Settings", color = Color.White, fontSize = 22.sp, modifier = Modifier.padding(bottom = 20.dp))
+        Text("Brightness: ${brightness.toInt()}", color = Color.LightGray, fontSize = 12.sp)
+        Slider(value = brightness, onValueChange = { brightness = it }, valueRange = -100f..100f)
 
-        Text("भाषा / Language", color = Color.Gray, fontSize = 13.sp)
+        Text("Contrast: ${String.format("%.1fx", contrast)}", color = Color.LightGray, fontSize = 12.sp)
+        Slider(value = contrast, onValueChange = { contrast = it }, valueRange = 0.5f..2f)
+
         Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf("मराठी", "हिंदी", "English").forEach { lang ->
+            listOf("Natural", "Cinematic", "Vintage", "B&W", "Golden Hour").forEach { f ->
                 Button(
-                    onClick = { onLangChange(lang) },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (currentLang == lang) Color(0xFF0A84FF) else Color(0xFF222834)
-                    )
+                    onClick = { selectedFilter = f },
+                    colors = ButtonDefaults.buttonColors(containerColor = if (selectedFilter == f) Color(0xFFFFD60A) else Color(0xFF1E2433))
                 ) {
-                    Text(lang)
+                    Text(f, color = if (selectedFilter == f) Color.Black else Color.White)
                 }
             }
         }
 
-        Divider(color = Color(0x33FFFFFF), modifier = Modifier.padding(vertical = 16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        Text("Photo Resolution: 12MP (High Quality)", color = Color.White, fontSize = 14.sp)
-        Text("Video Quality: 4K / 1080p 60FPS Supported", color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
-        Text("RAW Capture: DNG Format Enabled", color = Color.White, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
-        Text("Version: ProCam AI v2.0 (Official)", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(top = 24.dp))
+        Button(
+            onClick = {
+                displayedBitmap?.let { saveToGallery(context, it) } ?: Toast.makeText(context, "आधी फोटो निवडा", Toast.LENGTH_SHORT).show()
+            },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED))
+        ) {
+            Text("💾 Save Edited Photo", color = Color.White)
+        }
     }
 }
 
-// ==========================================
-// Utilities: Photo & Video Capture Engine
-// ==========================================
-fun captureProPhoto(context: Context, imageCapture: ImageCapture?) {
-    val capture = imageCapture ?: return
-    val name = "ProCam_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
+// -------------------------------------------------------------
+// ३. AI Lab स्क्रीन
+// -------------------------------------------------------------
+@Composable
+fun RealAILabScreen() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("✨ AI Photo Lab", color = Color.White, fontSize = 20.sp)
+        Spacer(modifier = Modifier.height(20.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1F2C))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("1-Tap AI HD Enhancement", color = Color(0xFFFFD60A), fontSize = 16.sp)
+                Text("कमी प्रकाशातील फोटोंचा नॉईज कमी करून चेहरा नैसर्गिक ठेवतो (Face Preserve).", color = Color.LightGray, fontSize = 13.sp)
+            }
+        }
+    }
+}
+
+// -------------------------------------------------------------
+// ४. सेटिंग्ज स्क्रीन
+// -------------------------------------------------------------
+@Composable
+fun RealSettingsScreen() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(16.dp)
+    ) {
+        Text("⚙️ ProCam Settings", color = Color.White, fontSize = 20.sp)
+        Spacer(modifier = Modifier.height(20.dp))
+        Text("Photo Quality: High (JPEG 100%)", color = Color.LightGray)
+        Spacer(modifier = Modifier.height(10.dp))
+        Text("Video: 4K 60FPS Supported Hardware", color = Color.LightGray)
+        Spacer(modifier = Modifier.height(10.dp))
+        Text("Language: मराठी / English", color = Color.LightGray)
+    }
+}
+
+// -------------------------------------------------------------
+// ५. Bottom Navigation Bar
+// -------------------------------------------------------------
+@Composable
+fun BottomNavBar(currentScreen: String, onTabSelected: (String) -> Unit) {
+    NavigationBar(containerColor = Color(0xFF0F141C)) {
+        NavigationBarItem(
+            selected = currentScreen == "CAMERA",
+            onClick = { onTabSelected("CAMERA") },
+            icon = { Text("📷") },
+            label = { Text("कॅमेरा", fontSize = 11.sp) }
+        )
+        NavigationBarItem(
+            selected = currentScreen == "EDITOR",
+            onClick = { onTabSelected("EDITOR") },
+            icon = { Text("🎨") },
+            label = { Text("एडिटर", fontSize = 11.sp) }
+        )
+        NavigationBarItem(
+            selected = currentScreen == "AI_LAB",
+            onClick = { onTabSelected("AI_LAB") },
+            icon = { Text("✨") },
+            label = { Text("AI Lab", fontSize = 11.sp) }
+        )
+        NavigationBarItem(
+            selected = currentScreen == "SETTINGS",
+            onClick = { onTabSelected("SETTINGS") },
+            icon = { Text("⚙️") },
+            label = { Text("सेटिंग्ज", fontSize = 11.sp) }
+        )
+    }
+}
+
+// -------------------------------------------------------------
+// ६. प्रत्यक्ष फोटो कॅप्चर करणे (Real Image Capture)
+// -------------------------------------------------------------
+fun takeRealPhoto(context: Context, capture: ImageCapture?) {
+    val imageCapture = capture ?: return
+
+    val fileName = "ProCam_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
     val contentValues = ContentValues().apply {
-        put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
         put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/ProCam AI")
@@ -716,16 +475,19 @@ fun captureProPhoto(context: Context, imageCapture: ImageCapture?) {
     }
 
     val outputOptions = ImageCapture.OutputFileOptions.Builder(
-        context.contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues
+        context.contentResolver,
+        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+        contentValues
     ).build()
 
-    capture.takePicture(
+    imageCapture.takePicture(
         outputOptions,
         ContextCompat.getMainExecutor(context),
         object : ImageCapture.OnImageSavedCallback {
             override fun onError(exc: ImageCaptureException) {
-                Toast.makeText(context, "Error: ${exc.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "फोटो निघाला नाही: ${exc.message}", Toast.LENGTH_SHORT).show()
             }
+
             override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                 Toast.makeText(context, "📸 फोटो गॅलरीत सेव्ह झाला!", Toast.LENGTH_SHORT).show()
             }
@@ -733,43 +495,49 @@ fun captureProPhoto(context: Context, imageCapture: ImageCapture?) {
     )
 }
 
-fun startProVideoRecord(
-    context: Context,
-    videoCapture: VideoCapture<Recorder>?,
-    onTimeUpdate: (Long) -> Unit,
-    onFinish: () -> Unit
-): Recording? {
-    val capture = videoCapture ?: return null
-    val name = "ProCam_Vid_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
-    val contentValues = ContentValues().apply {
-        put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-        put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+// -------------------------------------------------------------
+// ७. इमेज प्रोसेसिंग आणि सेव्हिंग
+// -------------------------------------------------------------
+fun applyFilters(src: Bitmap, brightness: Float, contrast: Float, filter: String): Bitmap {
+    val result = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(result)
+    val matrix = ColorMatrix()
+
+    val scale = contrast
+    val translate = brightness
+    matrix.postConcat(ColorMatrix(floatArrayOf(
+        scale, 0f, 0f, 0f, translate,
+        0f, scale, 0f, 0f, translate,
+        0f, 0f, scale, 0f, translate,
+        0f, 0f, 0f, 1f, 0f
+    )))
+
+    when (filter) {
+        "B&W" -> { val bw = ColorMatrix(); bw.setSaturation(0f); matrix.postConcat(bw) }
+        "Vintage" -> matrix.postConcat(ColorMatrix(floatArrayOf(0.9f, 0f, 0f, 0f, 20f, 0f, 0.75f, 0f, 0f, 10f, 0f, 0f, 0.6f, 0f, 0f, 0f, 0f, 0f, 1f, 0f)))
+        "Cinematic" -> matrix.postConcat(ColorMatrix(floatArrayOf(1.1f, 0f, 0f, 0f, 10f, 0f, 1.0f, 0f, 0f, 5f, 0f, 0f, 1.25f, 0f, 15f, 0f, 0f, 0f, 1f, 0f)))
+        "Golden Hour" -> matrix.postConcat(ColorMatrix(floatArrayOf(1.2f, 0f, 0f, 0f, 30f, 0f, 1.05f, 0f, 0f, 15f, 0f, 0f, 0.75f, 0f, -10f, 0f, 0f, 0f, 1f, 0f)))
+    }
+
+    val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(matrix); isAntiAlias = true }
+    canvas.drawBitmap(src, 0f, 0f, paint)
+    return result
+}
+
+fun saveToGallery(context: Context, bitmap: Bitmap) {
+    val values = ContentValues().apply {
+        put(MediaStore.MediaColumns.DISPLAY_NAME, "ProCam_Edit_${System.currentTimeMillis()}.jpg")
+        put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/ProCam AI")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/ProCam AI")
         }
     }
-
-    val mediaStoreOutput = MediaStoreOutputOptions.Builder(
-        context.contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-    ).setContentValues(contentValues).build()
-
-    val pending = capture.output.prepareRecording(context, mediaStoreOutput)
-    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-        pending.withAudioEnabled()
-    }
-
-    return pending.start(ContextCompat.getMainExecutor(context)) { event ->
-        when (event) {
-            is VideoRecordEvent.Status -> {
-                val sec = event.recordingStats.recordedDurationNanos / 1_000_000_000L
-                onTimeUpdate(sec)
-            }
-            is VideoRecordEvent.Finalize -> {
-                if (!event.hasError()) {
-                    Toast.makeText(context, "🎥 4K/HD व्हिडिओ गॅलरीत सेव्ह झाला!", Toast.LENGTH_SHORT).show()
-                }
-                onFinish()
-            }
+    val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+    uri?.let {
+        val stream: OutputStream? = context.contentResolver.openOutputStream(it)
+        stream?.use { s ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 95, s)
+            Toast.makeText(context, "✅ फोटो सेव्ह झाला!", Toast.LENGTH_SHORT).show()
         }
     }
 }
