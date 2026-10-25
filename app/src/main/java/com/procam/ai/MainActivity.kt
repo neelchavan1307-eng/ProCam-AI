@@ -45,7 +45,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -120,7 +119,6 @@ fun MasterWheelCameraScreen() {
     var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
     var isFlashOn by remember { mutableStateOf(false) }
 
-    // 🔍 अचूक हार्डवेअर झूम (0.6x ते 10x)
     var currentZoom by remember { mutableFloatStateOf(1f) }
     var isZoomDialVisible by remember { mutableStateOf(false) }
 
@@ -130,7 +128,6 @@ fun MasterWheelCameraScreen() {
     var isActionModeOn by remember { mutableStateOf(false) }
     var selectedVideoResolution by remember { mutableStateOf("4K") }
 
-    // ड्रॉपडाउन मेनू (स्क्रीनशॉट ३ प्रमाणे)
     var isQuickMenuOpen by remember { mutableStateOf(false) }
     var isMoreModesOpen by remember { mutableStateOf(false) }
     var selectedAspect by remember { mutableStateOf("4:3") }
@@ -142,7 +139,6 @@ fun MasterWheelCameraScreen() {
     var isAICameraOn by remember { mutableStateOf(true) }
     var isTiltShiftOn by remember { mutableStateOf(false) }
 
-    // Focus & Sliders
     var focusPoint by remember { mutableStateOf<Offset?>(null) }
     var exposureComp by remember { mutableFloatStateOf(0f) }
     var portraitBlur by remember { mutableFloatStateOf(0.65f) }
@@ -177,7 +173,6 @@ fun MasterWheelCameraScreen() {
         }
     }
 
-    // सुरक्षित झूम लागू करणे (Phone Sensor Safe Zoom)
     fun applySafeZoom(targetZoom: Float) {
         val zoomState = camera?.cameraInfo?.zoomState?.value
         val minZ = zoomState?.minZoomRatio ?: 0.6f
@@ -187,7 +182,6 @@ fun MasterWheelCameraScreen() {
         camera?.cameraControl?.setZoomRatio(safe)
     }
 
-    // कॅमेरा व व्हिडिओ हार्डवेअर बाइंडिंग
     LaunchedEffect(hasPermissions, lensFacing, selectedMode, selectedVideoResolution, isActionModeOn, activeFilter) {
         if (hasPermissions) {
             val cameraProvider = ProcessCameraProvider.getInstance(context).get()
@@ -219,10 +213,8 @@ fun MasterWheelCameraScreen() {
                     }
                 }
 
-                // सुरुवातीचे झूम सेट करणे
                 applySafeZoom(currentZoom)
 
-                // हार्डवेअर OIS + EIS सक्रिय करणे
                 try {
                     val camera2Control = androidx.camera.camera2.interop.Camera2CameraControl.from(camera!!.cameraControl)
                     val builder = androidx.camera.camera2.interop.CaptureRequestOptions.Builder()
@@ -271,7 +263,6 @@ fun MasterWheelCameraScreen() {
             )
         }
 
-        // Cinematic 2.39:1 Letterbox Bars
         if (activeFilter == "Cinematic") {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val h = maxHeight
@@ -281,7 +272,6 @@ fun MasterWheelCameraScreen() {
             }
         }
 
-        // ३x३ Grid Lines
         if (isGridOn) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width; val h = size.height; val c = Color(0x33FFFFFF)
@@ -292,7 +282,6 @@ fun MasterWheelCameraScreen() {
             }
         }
 
-        // Horizon Level Line
         if (isLevelOn) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width; val h = size.height; val midY = h / 2
@@ -301,7 +290,6 @@ fun MasterWheelCameraScreen() {
             }
         }
 
-        // Tap-to-Focus Indicator + Sun Slider
         focusPoint?.let { pos ->
             Row(
                 modifier = Modifier.offset(pos.x.dp - 35.dp, pos.y.dp - 35.dp),
@@ -328,10 +316,7 @@ fun MasterWheelCameraScreen() {
                     Text("☀️", fontSize = 16.sp)
                 }
             }
-        }// -------------------------------------------------------------
-        // वरचा विभाग: स्टेटस बार + फिल्टर्स स्क्रोल पट्टी
-        // -------------------------------------------------------------
-        Column(
+        }Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
@@ -351,7 +336,6 @@ fun MasterWheelCameraScreen() {
                     Text(if (isFlashOn) "⚡" else "⚡", color = if (isFlashOn) Color.Black else Color.White)
                 }
 
-                // ड्रॉपडाउन उघडणारा बाण (स्क्रीनशॉट ३ प्रमाणे)
                 Box(
                     modifier = Modifier
                         .background(Color(0x66000000), CircleShape)
@@ -380,7 +364,6 @@ fun MasterWheelCameraScreen() {
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // वरची फिल्टर्सची स्क्रोल पट्टी
             val allStylesAndFilters = listOf(
                 "Standard" to "🍎", "Rich Contrast" to "🎭", "Vibrant" to "🌈", 
                 "Warm" to "☀️", "Cool" to "❄️", "Cinematic" to "🎬", 
@@ -419,7 +402,6 @@ fun MasterWheelCameraScreen() {
             }
         }
 
-        // 🔥 स्क्रीनशॉट ३ प्रमाणे अस्सल Dropdown Tiles Grid Menu
         AnimatedVisibility(
             visible = isQuickMenuOpen,
             modifier = Modifier.padding(top = 80.dp, start = 16.dp, end = 16.dp).align(Alignment.TopCenter)
@@ -480,7 +462,6 @@ fun MasterWheelCameraScreen() {
             }
         }
 
-        // MORE Modes Sheet (स्क्रीनशॉट २ प्रमाणे)
         AnimatedVisibility(visible = isMoreModesOpen, modifier = Modifier.fillMaxSize().background(Color(0xF20A0D14))) {
             Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -503,24 +484,18 @@ fun MasterWheelCameraScreen() {
             }
         }
 
-        // Countdown Display
         if (isCountingDown) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("$countdownValue", color = Color(0xFFFFCC00), fontSize = 95.sp)
             }
         }
 
-        // -------------------------------------------------------------
-        // तळाचा विभाग: 🔥 स्क्रीनशॉट ४ व ५ मधील अस्सल Arc Zoom Wheel (0.6x ते 10x)
-        // -------------------------------------------------------------
         Column(
             modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 🔥 अर्धवर्तुळाकार Arc Zoom Wheel (जेव्हा युझर डायल ड्रॅग करतो)
             if (isZoomDialVisible) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 8.dp)) {
-                    // मधोमध दिसणारा मोठा झूम आकडा (उदा. 1.5x)
                     Text(
                         text = String.format("%.1fx", currentZoom),
                         color = Color(0xFFFFCC00),
@@ -529,7 +504,6 @@ fun MasterWheelCameraScreen() {
                     )
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    // सेमी-सर्कल आर्क डायल
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(0.9f)
@@ -547,7 +521,6 @@ fun MasterWheelCameraScreen() {
                             val w = size.width
                             val h = size.height
 
-                            // वक्र आर्क रेषा (Curved Arc)
                             drawArc(
                                 color = Color(0x66FFFFFF),
                                 startAngle = 180f,
@@ -558,7 +531,6 @@ fun MasterWheelCameraScreen() {
                                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
                             )
 
-                            // खुणा (Ticks 0.6, 1, 2, 4, 6, 8, 10)
                             val markings = listOf(0.6f, 1f, 2f, 4f, 6f, 8f, 10f)
                             markings.forEach { mark ->
                                 val progress = (mark - 0.6f) / (10f - 0.6f)
@@ -576,7 +548,6 @@ fun MasterWheelCameraScreen() {
                 }
             }
 
-            // Quick Lens Switcher Pills: 0.6x Wide • 1x • 2x • 5x • Dial
             Row(
                 modifier = Modifier
                     .background(Color(0x66000000), RoundedCornerShape(24.dp))
@@ -605,20 +576,18 @@ fun MasterWheelCameraScreen() {
                     }
                 }
 
-                // डायल टॉगल बटण (Arc Wheel उघडण्यासाठी)
                 Box(
                     modifier = Modifier
                         .background(if (isZoomDialVisible) Color(0xFFFFCC00) else Color(0x33FFFFFF), RoundedCornerShape(12.dp))
                         .clickable { isZoomDialVisible = !isZoomDialVisible }
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text("DIAL 휠", color = if (isZoomDialVisible) Color.Black else Color.White, fontSize = 10.sp)
+                    Text("DIAL", color = if (isZoomDialVisible) Color.Black else Color.White, fontSize = 10.sp)
                 }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // स्वच्छ मुख्य मोड्स (Clean Bottom Mode Strip)
             val cleanModes = listOf("PHOTO", "VIDEO", "PORTRAIT", "NIGHT", "PRO")
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -639,7 +608,6 @@ fun MasterWheelCameraScreen() {
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Shutter Button
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 40.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.size(45.dp))
 
@@ -792,17 +760,13 @@ fun captureMegaProcessedPhoto(
                             }
                         } catch (_: Exception) {}
 
-                        // Aspect Ratio क्रॉप
                         bmp = cropToRealAspectRatio(bmp, aspectRatio)
 
-                        // १. iPhone Photographic Style
                         bmp = applyPhotographicStyle(bmp, photographicStyle)
 
-                        // २. मोड इफेक्ट (Portrait, Night)
                         if (mode == "PORTRAIT") bmp = applyDSLRBokehEffect(bmp, blurLevel)
                         if (mode == "NIGHT") bmp = processNightPhoto(bmp)
 
-                        // ३. क्रिएटिव्ह फिल्टर (Cinematic Letterbox, Golden, Cyberpunk, etc.)
                         bmp = when (activeFilter) {
                             "Cinematic" -> applyCinematicLetterbox(bmp)
                             "Golden" -> applyGoldenHourGlow(bmp)
