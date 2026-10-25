@@ -68,6 +68,14 @@ import java.util.Locale
 import kotlin.math.*
 import kotlin.random.Random
 
+// डेटा क्लास ज्यामुळे Triple चा एरर कायमचा दूर झाला
+data class QuickMenuTile(
+    val title: String,
+    val subtitle: String,
+    val isActive: Boolean,
+    val action: () -> Unit
+)
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -100,9 +108,6 @@ fun ProCamFinalWheelApp() {
     }
 }
 
-// -------------------------------------------------------------
-// १. Arc Zoom Wheel + Dropdown Tiles सह कॅमेरा स्क्रीन (भाग १)
-// -------------------------------------------------------------
 @Composable
 fun MasterWheelCameraScreen() {
     val context = LocalContext.current
@@ -402,6 +407,7 @@ fun MasterWheelCameraScreen() {
             }
         }
 
+        // 🔥 दुरुस्त केलेला ड्रॉपडाउन मेनू (१००% एरर-फ्री)
         AnimatedVisibility(
             visible = isQuickMenuOpen,
             modifier = Modifier.padding(top = 80.dp, start = 16.dp, end = 16.dp).align(Alignment.TopCenter)
@@ -414,46 +420,46 @@ fun MasterWheelCameraScreen() {
                 Column(modifier = Modifier.padding(14.dp)) {
                     val tileRows = listOf(
                         listOf(
-                            Triple("HDR", if (isHDROn) "On" else "Off", isHDROn) { isHDROn = !isHDROn },
-                            Triple("AI", if (isAICameraOn) "AI Camera" else "Off", isAICameraOn) { isAICameraOn = !isAICameraOn },
-                            Triple("Macro", "2MP Lens", activeFilter == "Macro") { activeFilter = if (activeFilter == "Macro") "Normal" else "Macro" },
-                            Triple("Aspect", selectedAspect, true) {
+                            QuickMenuTile("HDR", if (isHDROn) "On" else "Off", isHDROn) { isHDROn = !isHDROn },
+                            QuickMenuTile("AI", if (isAICameraOn) "AI Camera" else "Off", isAICameraOn) { isAICameraOn = !isAICameraOn },
+                            QuickMenuTile("Macro", "2MP Lens", activeFilter == "Macro") { activeFilter = if (activeFilter == "Macro") "Normal" else "Macro" },
+                            QuickMenuTile("Aspect", selectedAspect, true) {
                                 selectedAspect = when(selectedAspect) { "4:3" -> "16:9"; "16:9" -> "1:1"; "1:1" -> "Full"; else -> "4:3" }
                             }
                         ),
                         listOf(
-                            Triple("Timer", if (timerDuration == 0) "Off" else "${timerDuration}s", timerDuration > 0) {
+                            QuickMenuTile("Timer", if (timerDuration == 0) "Off" else "${timerDuration}s", timerDuration > 0) {
                                 timerDuration = when(timerDuration) { 0 -> 3; 3 -> 5; 5 -> 10; else -> 0 }
                             },
-                            Triple("Tilt-shift", if (isTiltShiftOn) "On" else "Off", isTiltShiftOn) { isTiltShiftOn = !isTiltShiftOn },
-                            Triple("Grid #", if (isGridOn) "On" else "Off", isGridOn) { isGridOn = !isGridOn },
-                            Triple("Level ⊝", if (isLevelOn) "On" else "Off", isLevelOn) { isLevelOn = !isLevelOn }
+                            QuickMenuTile("Tilt-shift", if (isTiltShiftOn) "On" else "Off", isTiltShiftOn) { isTiltShiftOn = !isTiltShiftOn },
+                            QuickMenuTile("Grid #", if (isGridOn) "On" else "Off", isGridOn) { isGridOn = !isGridOn },
+                            QuickMenuTile("Level ⊝", if (isLevelOn) "On" else "Off", isLevelOn) { isLevelOn = !isLevelOn }
                         ),
                         listOf(
-                            Triple("Watermark", if (isWatermarkOn) "On" else "Off", isWatermarkOn) { isWatermarkOn = !isWatermarkOn },
-                            Triple("Resolution", selectedVideoResolution, true) {
+                            QuickMenuTile("Watermark", if (isWatermarkOn) "On" else "Off", isWatermarkOn) { isWatermarkOn = !isWatermarkOn },
+                            QuickMenuTile("Resolution", selectedVideoResolution, true) {
                                 selectedVideoResolution = when(selectedVideoResolution) { "4K" -> "1080p"; "1080p" -> "720p"; else -> "4K" }
                             },
-                            Triple("Assist cam", "Ready", false) {},
-                            Triple("Settings", "More", false) { isQuickMenuOpen = false; isMoreModesOpen = true }
+                            QuickMenuTile("Assist cam", "Ready", false) {},
+                            QuickMenuTile("Settings", "More", false) { isQuickMenuOpen = false; isMoreModesOpen = true }
                         )
                     )
 
                     tileRows.forEach { rowTiles ->
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                            rowTiles.forEach { (title, sub, active, onClick) ->
+                            rowTiles.forEach { tile ->
                                 Column(
                                     modifier = Modifier
                                         .size(72.dp, 62.dp)
-                                        .background(if (active) Color(0x33FFCC00) else Color(0xFF1E2433), RoundedCornerShape(10.dp))
-                                        .border(1.dp, if (active) Color(0xFFFFCC00) else Color.Transparent, RoundedCornerShape(10.dp))
-                                        .clickable { onClick() }
+                                        .background(if (tile.isActive) Color(0x33FFCC00) else Color(0xFF1E2433), RoundedCornerShape(10.dp))
+                                        .border(1.dp, if (tile.isActive) Color(0xFFFFCC00) else Color.Transparent, RoundedCornerShape(10.dp))
+                                        .clickable { tile.action() }
                                         .padding(4.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Center
                                 ) {
-                                    Text(title, color = if (active) Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                                    Text(sub, color = Color.Gray, fontSize = 9.sp)
+                                    Text(tile.title, color = if (tile.isActive) Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                    Text(tile.subtitle, color = Color.Gray, fontSize = 9.sp)
                                 }
                             }
                         }
