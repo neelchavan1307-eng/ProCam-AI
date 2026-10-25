@@ -97,7 +97,7 @@ fun ProCamFinal4KApp() {
 }
 
 // -------------------------------------------------------------
-// १. ४K/१०८०p/७२०p आणि सर्व फीचर्स असलेला कॅमेरा स्क्रीन
+// १. ४K/१०८०p/७२०p कॅमेरा स्क्रीन (भाग १)
 // -------------------------------------------------------------
 @Composable
 fun Master4KCameraScreen() {
@@ -174,7 +174,6 @@ fun Master4KCameraScreen() {
 
             try {
                 if (selectedMode == "VIDEO" || selectedMode == "PRO VIDEO") {
-                    // ४K / १०८०p / ७२०p क्वालिटी ठरवणे
                     val targetQuality = when (selectedVideoResolution) {
                         "4K" -> Quality.UHD
                         "1080p" -> Quality.FHD
@@ -224,7 +223,7 @@ fun Master4KCameraScreen() {
             )
         }
 
-        // १. ३x३ Grid Lines
+        // ३x३ Grid Lines
         if (isGridOn) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width; val h = size.height; val c = Color(0x44FFFFFF)
@@ -235,7 +234,7 @@ fun Master4KCameraScreen() {
             }
         }
 
-        // २. Horizon Level Line
+        // Horizon Level Line
         if (isLevelOn) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width; val h = size.height; val midY = h / 2
@@ -244,7 +243,7 @@ fun Master4KCameraScreen() {
             }
         }
 
-        // ३. Tap-to-Focus Indicator (पिवळा फोकस बॉक्स)
+        // Tap-to-Focus Indicator (पिवळा फोकस बॉक्स)
         focusPoint?.let { pos ->
             Box(
                 modifier = Modifier
@@ -254,7 +253,7 @@ fun Master4KCameraScreen() {
             )
         }
 
-        // ४. Top Bar (Flash, 4K/1080p Selector, Status, Settings)
+        // Top Bar (Flash, 4K/1080p Selector, Status, Settings)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -321,7 +320,7 @@ fun Master4KCameraScreen() {
             }
         }
 
-        // ५. Pro Mode Exposure Slider
+        // Pro Mode Exposure Slider
         if (selectedMode == "PRO") {
             Column(
                 modifier = Modifier
@@ -342,7 +341,7 @@ fun Master4KCameraScreen() {
             }
         }
 
-        // ६. Portrait Mode Bokeh Slider
+        // Portrait Mode Bokeh Slider
         if (selectedMode == "PORTRAIT") {
             Column(
                 modifier = Modifier
@@ -359,9 +358,7 @@ fun Master4KCameraScreen() {
                     colors = SliderDefaults.colors(thumbColor = Color(0xFF0A84FF), activeTrackColor = Color(0xFF0A84FF))
                 )
             }
-        }
-
-        // ७. Quick Dropdown Menu
+        }// Quick Dropdown Menu
         AnimatedVisibility(
             visible = isQuickMenuOpen,
             modifier = Modifier.padding(top = 80.dp, start = 16.dp, end = 16.dp).align(Alignment.TopCenter)
@@ -401,20 +398,12 @@ fun Master4KCameraScreen() {
             }
         }
 
-        // ८. MORE Modes Sheet
+        // MORE Modes Sheet
         AnimatedVisibility(visible = isMoreModesOpen, modifier = Modifier.fillMaxSize().background(Color(0xF20A0D14))) {
             Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("All Camera Modes", color = Color.White, fontSize = 20.sp)
                     Button(onClick = { isMoreModesOpen = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF222938))) { Text("Close ✕") }
-                }
-                Spacer(modifier = Modifier.height(20.dp))
-                val modesList = listOf("EXPERT RAW", "PRO VIDEO", "NIGHT", "PORTRAIT", "SLOW MOTION", "TIME-LAPSE", "PANORAMA", "PRO")
-                modesList.chunked(3).forEach { r ->
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        r.forEach { m ->
-                            Button(
-                                onClick = { isMoreModesOpen = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF222938))) { Text("Close ✕") }
                 }
                 Spacer(modifier = Modifier.height(20.dp))
                 val modesList = listOf("EXPERT RAW", "PRO VIDEO", "NIGHT", "PORTRAIT", "SLOW MOTION", "TIME-LAPSE", "PANORAMA", "PRO")
@@ -432,14 +421,14 @@ fun Master4KCameraScreen() {
             }
         }
 
-        // ९. Countdown Display
+        // Countdown Display
         if (isCountingDown) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("$countdownValue", color = Color(0xFFFFD60A), fontSize = 95.sp)
             }
         }
 
-        // १०. Bottom Bar (Zoom, Modes, Shutter, Flip)
+        // Bottom Bar (Zoom, Modes, Shutter, Flip)
         Column(
             modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -521,7 +510,9 @@ fun Master4KCameraScreen() {
             }
         }
     }
-        }// -------------------------------------------------------------
+}
+
+// -------------------------------------------------------------
 // २. गॅलरीत 4K/1080p/720p व्हिडिओ सेव्ह करणारा खरा रेकॉर्डर
 // -------------------------------------------------------------
 fun startRealVideoRecording(
@@ -646,9 +637,7 @@ fun cropToRealAspectRatio(src: Bitmap, aspect: String): Bitmap {
         }
         else -> src
     }
-}
-
-// -------------------------------------------------------------
+}// -------------------------------------------------------------
 // ४. AI Photo Lab (Before/After Split Slider सह)
 // -------------------------------------------------------------
 @Composable
