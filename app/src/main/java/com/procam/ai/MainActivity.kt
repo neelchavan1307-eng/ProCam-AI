@@ -35,6 +35,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
@@ -44,6 +45,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,21 +66,22 @@ import kotlinx.coroutines.launch
 import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
+import kotlin.math.*
 import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF000000)) {
-                ProCamiPhoneMasterApp()
+            Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
+                ProCamFinalWheelApp()
             }
         }
     }
 }
 
 @Composable
-fun ProCamiPhoneMasterApp() {
+fun ProCamFinalWheelApp() {
     var currentScreen by remember { mutableStateOf("CAMERA") }
 
     Scaffold(
@@ -89,7 +92,7 @@ fun ProCamiPhoneMasterApp() {
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
             when (currentScreen) {
-                "CAMERA" -> MasteriPhoneCameraScreen()
+                "CAMERA" -> MasterWheelCameraScreen()
                 "EDITOR" -> CompleteEditorScreen()
                 "AI_LAB" -> CompleteAILabScreen()
                 "SETTINGS" -> CompleteSettingsScreen()
@@ -99,10 +102,10 @@ fun ProCamiPhoneMasterApp() {
 }
 
 // -------------------------------------------------------------
-// १. आयफोन स्टाईल कॅमेरा स्क्रीन (भाग १)
+// १. Arc Zoom Wheel + Dropdown Tiles सह कॅमेरा स्क्रीन (भाग १)
 // -------------------------------------------------------------
 @Composable
-fun MasteriPhoneCameraScreen() {
+fun MasterWheelCameraScreen() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
@@ -116,29 +119,30 @@ fun MasteriPhoneCameraScreen() {
 
     var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
     var isFlashOn by remember { mutableStateOf(false) }
-    var currentZoom by remember { mutableFloatStateOf(1f) }
 
-    // मुख्य मोड्स आणि फिल्टर्स
+    // 🔍 अचूक हार्डवेअर झूम (0.6x ते 10x)
+    var currentZoom by remember { mutableFloatStateOf(1f) }
+    var isZoomDialVisible by remember { mutableStateOf(false) }
+
     var selectedMode by remember { mutableStateOf("PHOTO") }
     var activeFilter by remember { mutableStateOf("Normal") }
-
-    // 🍎 आयफोन Photographic Styles
     var activePhotographicStyle by remember { mutableStateOf("Standard") }
-
-    // 🍎 आयफोन Action Mode (Super OIS)
     var isActionModeOn by remember { mutableStateOf(false) }
-
     var selectedVideoResolution by remember { mutableStateOf("4K") }
 
-    // Quick Settings
+    // ड्रॉपडाउन मेनू (स्क्रीनशॉट ३ प्रमाणे)
     var isQuickMenuOpen by remember { mutableStateOf(false) }
+    var isMoreModesOpen by remember { mutableStateOf(false) }
     var selectedAspect by remember { mutableStateOf("4:3") }
     var timerDuration by remember { mutableIntStateOf(0) }
     var isGridOn by remember { mutableStateOf(true) }
     var isLevelOn by remember { mutableStateOf(true) }
     var isWatermarkOn by remember { mutableStateOf(true) }
+    var isHDROn by remember { mutableStateOf(true) }
+    var isAICameraOn by remember { mutableStateOf(true) }
+    var isTiltShiftOn by remember { mutableStateOf(false) }
 
-    // 🍎 iOS Tap-to-Focus with Sun Exposure Slider
+    // Focus & Sliders
     var focusPoint by remember { mutableStateOf<Offset?>(null) }
     var exposureComp by remember { mutableFloatStateOf(0f) }
     var portraitBlur by remember { mutableFloatStateOf(0.65f) }
@@ -173,7 +177,17 @@ fun MasteriPhoneCameraScreen() {
         }
     }
 
-    // 🍎 कॅमेरा बाइंडिंग: हार्डवेअर OIS + iPhone Action Mode + Video Filters
+    // सुरक्षित झूम लागू करणे (Phone Sensor Safe Zoom)
+    fun applySafeZoom(targetZoom: Float) {
+        val zoomState = camera?.cameraInfo?.zoomState?.value
+        val minZ = zoomState?.minZoomRatio ?: 0.6f
+        val maxZ = (zoomState?.maxZoomRatio ?: 10f).coerceAtMost(10f)
+        val safe = targetZoom.coerceIn(minZ, maxZ)
+        currentZoom = safe
+        camera?.cameraControl?.setZoomRatio(safe)
+    }
+
+    // कॅमेरा व व्हिडिओ हार्डवेअर बाइंडिंग
     LaunchedEffect(hasPermissions, lensFacing, selectedMode, selectedVideoResolution, isActionModeOn, activeFilter) {
         if (hasPermissions) {
             val cameraProvider = ProcessCameraProvider.getInstance(context).get()
@@ -204,9 +218,11 @@ fun MasteriPhoneCameraScreen() {
                         camera?.cameraControl?.setExposureCompensationIndex(exposureComp.toInt())
                     }
                 }
-                camera?.cameraControl?.setZoomRatio(currentZoom)
 
-                // 🏃 हार्डवेअर OIS + Action Mode Super Stabilization
+                // सुरुवातीचे झूम सेट करणे
+                applySafeZoom(currentZoom)
+
+                // हार्डवेअर OIS + EIS सक्रिय करणे
                 try {
                     val camera2Control = androidx.camera.camera2.interop.Camera2CameraControl.from(camera!!.cameraControl)
                     val builder = androidx.camera.camera2.interop.CaptureRequestOptions.Builder()
@@ -219,7 +235,6 @@ fun MasteriPhoneCameraScreen() {
                             android.hardware.camera2.CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON
                         )
 
-                    // व्हिडिओसाठी हार्डवेअर टोनिंग
                     when (activeFilter) {
                         "Noir" -> builder.setCaptureRequestOption(android.hardware.camera2.CaptureRequest.CONTROL_EFFECT_MODE, android.hardware.camera2.CaptureRequest.CONTROL_EFFECT_MODE_MONO)
                         "Vintage" -> builder.setCaptureRequestOption(android.hardware.camera2.CaptureRequest.CONTROL_EFFECT_MODE, android.hardware.camera2.CaptureRequest.CONTROL_EFFECT_MODE_SEPIA)
@@ -227,7 +242,6 @@ fun MasteriPhoneCameraScreen() {
                         "Cyberpunk" -> builder.setCaptureRequestOption(android.hardware.camera2.CaptureRequest.CONTROL_AWB_MODE, android.hardware.camera2.CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT)
                         else -> builder.setCaptureRequestOption(android.hardware.camera2.CaptureRequest.CONTROL_EFFECT_MODE, android.hardware.camera2.CaptureRequest.CONTROL_EFFECT_MODE_OFF)
                     }
-
                     camera2Control.setCaptureRequestOptions(builder.build())
                 } catch (_: Exception) {}
             } catch (e: Exception) {
@@ -257,7 +271,7 @@ fun MasteriPhoneCameraScreen() {
             )
         }
 
-        // 🎬 Cinematic Letterbox Bars
+        // Cinematic 2.39:1 Letterbox Bars
         if (activeFilter == "Cinematic") {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val h = maxHeight
@@ -287,7 +301,7 @@ fun MasteriPhoneCameraScreen() {
             }
         }
 
-        // ☀️ 🍎 आयफोन सिग्नेचर Tap-to-Focus Box + Sun Slider
+        // Tap-to-Focus Indicator + Sun Slider
         focusPoint?.let { pos ->
             Row(
                 modifier = Modifier.offset(pos.x.dp - 35.dp, pos.y.dp - 35.dp),
@@ -299,7 +313,6 @@ fun MasteriPhoneCameraScreen() {
                         .border(1.5.dp, Color(0xFFFFCC00), RoundedCornerShape(4.dp))
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                // सूर्य (☀️) - ज्याला वर-खाली ड्रॅग करून ब्राइटनेस बदलता येतो
                 Box(
                     modifier = Modifier
                         .size(32.dp)
@@ -316,7 +329,7 @@ fun MasteriPhoneCameraScreen() {
                 }
             }
         }// -------------------------------------------------------------
-        // वरचा विभाग: Action Mode + 4K + iPhone Photographic Styles
+        // वरचा विभाग: स्टेटस बार + फिल्टर्स स्क्रोल पट्टी
         // -------------------------------------------------------------
         Column(
             modifier = Modifier
@@ -324,7 +337,6 @@ fun MasteriPhoneCameraScreen() {
                 .statusBarsPadding()
                 .padding(top = 4.dp)
         ) {
-            // १. टॉप स्टेटस बार
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -339,9 +351,19 @@ fun MasteriPhoneCameraScreen() {
                     Text(if (isFlashOn) "⚡" else "⚡", color = if (isFlashOn) Color.Black else Color.White)
                 }
 
+                // ड्रॉपडाउन उघडणारा बाण (स्क्रीनशॉट ३ प्रमाणे)
+                Box(
+                    modifier = Modifier
+                        .background(Color(0x66000000), CircleShape)
+                        .clickable { isQuickMenuOpen = !isQuickMenuOpen }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(if (isQuickMenuOpen) "▲" else "▼", color = Color.White, fontSize = 12.sp)
+                }
+
                 if (selectedMode == "VIDEO") {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        // 🏃 🍎 आयफोन Action Mode बटण
                         Box(
                             modifier = Modifier
                                 .background(if (isActionModeOn) Color(0xFFFFCC00) else Color(0x66000000), RoundedCornerShape(12.dp))
@@ -350,59 +372,15 @@ fun MasteriPhoneCameraScreen() {
                         ) {
                             Text("🏃 ACTION", color = if (isActionModeOn) Color.Black else Color.White, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                         }
-
-                        if (isRecording) {
-                            Row(
-                                modifier = Modifier.background(Color(0xCCFF0000), RoundedCornerShape(20.dp)).padding(horizontal = 10.dp, vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("● REC $selectedVideoResolution ", color = Color.White, fontSize = 11.sp)
-                                Text(String.format("%02d:%02d", recordingTimer / 60, recordingTimer % 60), color = Color.White, fontSize = 11.sp)
-                            }
-                        } else {
-                            Row(
-                                modifier = Modifier
-                                    .background(Color(0x99000000), RoundedCornerShape(20.dp))
-                                    .border(1.dp, Color(0xFFFFCC00), RoundedCornerShape(20.dp))
-                                    .padding(horizontal = 4.dp, vertical = 2.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                listOf("720p", "1080p", "4K").forEach { res ->
-                                    val isSel = selectedVideoResolution == res
-                                    Text(
-                                        text = res,
-                                        color = if (isSel) Color.Black else Color.White,
-                                        fontSize = 10.sp,
-                                        modifier = Modifier
-                                            .background(if (isSel) Color(0xFFFFCC00) else Color.Transparent, RoundedCornerShape(10.dp))
-                                            .clickable { selectedVideoResolution = res }
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                        }
                     }
                 } else {
-                    Row(
-                        modifier = Modifier.background(Color(0x88000000), RoundedCornerShape(20.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text("64MP RAW", color = Color(0xFFFFCC00), fontSize = 11.sp)
-                        Text(selectedAspect, color = Color(0xFF0A84FF), fontSize = 11.sp)
-                    }
-                }
-
-                IconButton(
-                    onClick = { isQuickMenuOpen = !isQuickMenuOpen },
-                    modifier = Modifier.size(36.dp).background(if (isQuickMenuOpen) Color(0xFFFFCC00) else Color(0x66000000), CircleShape)
-                ) {
-                    Text("⚙️", fontSize = 13.sp)
+                    Text("64MP RAW", color = Color(0xFFFFCC00), fontSize = 11.sp)
                 }
             }
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // 🍎 २. आयफोनच्या अधिकृत PHOTOGRAPHIC STYLES + क्रिएटिव्ह फिल्टर्स पट्टी
+            // वरची फिल्टर्सची स्क्रोल पट्टी
             val allStylesAndFilters = listOf(
                 "Standard" to "🍎", "Rich Contrast" to "🎭", "Vibrant" to "🌈", 
                 "Warm" to "☀️", "Cool" to "❄️", "Cinematic" to "🎬", 
@@ -435,68 +413,91 @@ fun MasteriPhoneCameraScreen() {
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(icon, fontSize = 11.sp)
-                        Text(
-                            text = name,
-                            color = if (isSel) Color.Black else Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = if (isSel) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
-                        )
+                        Text(name, color = if (isSel) Color.Black else Color.White, fontSize = 11.sp)
                     }
                 }
             }
         }
 
-        // Portrait Bokeh f/stop Slider (आयफोन स्टाईल ॲपर्चर)
-        if (selectedMode == "PORTRAIT") {
-            Column(
-                modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 150.dp, start = 24.dp, end = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text("ƒ 2.8 • Bokeh ${(portraitBlur * 100).toInt()}%", color = Color(0xFFFFCC00), fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                Slider(
-                    value = portraitBlur,
-                    onValueChange = { portraitBlur = it },
-                    valueRange = 0.2f..1.0f,
-                    colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00))
-                )
-            }
-        }
-
-        // Quick Settings Dropdown
+        // 🔥 स्क्रीनशॉट ३ प्रमाणे अस्सल Dropdown Tiles Grid Menu
         AnimatedVisibility(
             visible = isQuickMenuOpen,
             modifier = Modifier.padding(top = 80.dp, start = 16.dp, end = 16.dp).align(Alignment.TopCenter)
         ) {
-            Card(colors = CardDefaults.cardColors(containerColor = Color(0xEE161B26)), shape = RoundedCornerShape(16.dp)) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Aspect Ratio", color = Color.Gray, fontSize = 11.sp)
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        listOf("1:1", "4:3", "16:9", "Full").forEach { asp ->
-                            Button(
-                                onClick = { selectedAspect = asp },
-                                colors = ButtonDefaults.buttonColors(containerColor = if (selectedAspect == asp) Color(0xFFFFCC00) else Color(0xFF222938)),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
-                            ) { Text(asp, color = if (selectedAspect == asp) Color.Black else Color.White, fontSize = 11.sp) }
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xF2141822)),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C3240))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    val tileRows = listOf(
+                        listOf(
+                            Triple("HDR", if (isHDROn) "On" else "Off", isHDROn) { isHDROn = !isHDROn },
+                            Triple("AI", if (isAICameraOn) "AI Camera" else "Off", isAICameraOn) { isAICameraOn = !isAICameraOn },
+                            Triple("Macro", "2MP Lens", activeFilter == "Macro") { activeFilter = if (activeFilter == "Macro") "Normal" else "Macro" },
+                            Triple("Aspect", selectedAspect, true) {
+                                selectedAspect = when(selectedAspect) { "4:3" -> "16:9"; "16:9" -> "1:1"; "1:1" -> "Full"; else -> "4:3" }
+                            }
+                        ),
+                        listOf(
+                            Triple("Timer", if (timerDuration == 0) "Off" else "${timerDuration}s", timerDuration > 0) {
+                                timerDuration = when(timerDuration) { 0 -> 3; 3 -> 5; 5 -> 10; else -> 0 }
+                            },
+                            Triple("Tilt-shift", if (isTiltShiftOn) "On" else "Off", isTiltShiftOn) { isTiltShiftOn = !isTiltShiftOn },
+                            Triple("Grid #", if (isGridOn) "On" else "Off", isGridOn) { isGridOn = !isGridOn },
+                            Triple("Level ⊝", if (isLevelOn) "On" else "Off", isLevelOn) { isLevelOn = !isLevelOn }
+                        ),
+                        listOf(
+                            Triple("Watermark", if (isWatermarkOn) "On" else "Off", isWatermarkOn) { isWatermarkOn = !isWatermarkOn },
+                            Triple("Resolution", selectedVideoResolution, true) {
+                                selectedVideoResolution = when(selectedVideoResolution) { "4K" -> "1080p"; "1080p" -> "720p"; else -> "4K" }
+                            },
+                            Triple("Assist cam", "Ready", false) {},
+                            Triple("Settings", "More", false) { isQuickMenuOpen = false; isMoreModesOpen = true }
+                        )
+                    )
+
+                    tileRows.forEach { rowTiles ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            rowTiles.forEach { (title, sub, active, onClick) ->
+                                Column(
+                                    modifier = Modifier
+                                        .size(72.dp, 62.dp)
+                                        .background(if (active) Color(0x33FFCC00) else Color(0xFF1E2433), RoundedCornerShape(10.dp))
+                                        .border(1.dp, if (active) Color(0xFFFFCC00) else Color.Transparent, RoundedCornerShape(10.dp))
+                                        .clickable { onClick() }
+                                        .padding(4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(title, color = if (active) Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                    Text(sub, color = Color.Gray, fontSize = 9.sp)
+                                }
+                            }
                         }
                     }
+                }
+            }
+        }
 
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text("Timer", color = Color.Gray, fontSize = 11.sp)
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        listOf(0 to "Off", 3 to "3s", 5 to "5s", 10 to "10s").forEach { (sec, label) ->
+        // MORE Modes Sheet (स्क्रीनशॉट २ प्रमाणे)
+        AnimatedVisibility(visible = isMoreModesOpen, modifier = Modifier.fillMaxSize().background(Color(0xF20A0D14))) {
+            Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Camera Modes", color = Color.White, fontSize = 20.sp)
+                    Button(onClick = { isMoreModesOpen = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF222938))) { Text("Close ✕") }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+                val modesList = listOf("Pro", "Documents", "Slow motion", "Time-lapse", "Long Exposure", "Panorama", "Short film", "AI Watermark")
+                modesList.chunked(3).forEach { r ->
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        r.forEach { m ->
                             Button(
-                                onClick = { timerDuration = sec },
-                                colors = ButtonDefaults.buttonColors(containerColor = if (timerDuration == sec) Color(0xFFFFCC00) else Color(0xFF222938)),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
-                            ) { Text(label, color = if (timerDuration == sec) Color.Black else Color.White, fontSize = 11.sp) }
+                                onClick = { isMoreModesOpen = false; Toast.makeText(context, "$m निवडले", Toast.LENGTH_SHORT).show() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF161B26)),
+                                modifier = Modifier.size(100.dp, 65.dp)
+                            ) { Text(m, color = Color.White, fontSize = 10.sp) }
                         }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        QuickToggleButton("Grid #", isGridOn) { isGridOn = !isGridOn }
-                        QuickToggleButton("Level ⊝", isLevelOn) { isLevelOn = !isLevelOn }
-                        QuickToggleButton("Watermark", isWatermarkOn) { isWatermarkOn = !isWatermarkOn }
                     }
                 }
             }
@@ -510,26 +511,89 @@ fun MasteriPhoneCameraScreen() {
         }
 
         // -------------------------------------------------------------
-        // तळाचा विभाग: 🍎 iOS .5, 1, 2, 5 Lenses + Clean Modes + Shutter
+        // तळाचा विभाग: 🔥 स्क्रीनशॉट ४ व ५ मधील अस्सल Arc Zoom Wheel (0.6x ते 10x)
         // -------------------------------------------------------------
         Column(
             modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 🍎 अस्सल आयफोन लेन्स स्विचर: .5 • 1 • 2 • 5
+            // 🔥 अर्धवर्तुळाकार Arc Zoom Wheel (जेव्हा युझर डायल ड्रॅग करतो)
+            if (isZoomDialVisible) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 8.dp)) {
+                    // मधोमध दिसणारा मोठा झूम आकडा (उदा. 1.5x)
+                    Text(
+                        text = String.format("%.1fx", currentZoom),
+                        color = Color(0xFFFFCC00),
+                        fontSize = 20.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // सेमी-सर्कल आर्क डायल
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f)
+                            .height(55.dp)
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    val delta = dragAmount.x / 40f
+                                    val newZoom = (currentZoom + delta).coerceIn(0.6f, 10f)
+                                    applySafeZoom(newZoom)
+                                }
+                            }
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val w = size.width
+                            val h = size.height
+
+                            // वक्र आर्क रेषा (Curved Arc)
+                            drawArc(
+                                color = Color(0x66FFFFFF),
+                                startAngle = 180f,
+                                sweepAngle = 180f,
+                                useCenter = false,
+                                topLeft = Offset(0f, -h),
+                                size = androidx.compose.ui.geometry.Size(w, h * 2),
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                            )
+
+                            // खुणा (Ticks 0.6, 1, 2, 4, 6, 8, 10)
+                            val markings = listOf(0.6f, 1f, 2f, 4f, 6f, 8f, 10f)
+                            markings.forEach { mark ->
+                                val progress = (mark - 0.6f) / (10f - 0.6f)
+                                val x = w * progress
+                                val isNear = abs(currentZoom - mark) < 0.3f
+                                drawLine(
+                                    color = if (isNear) Color(0xFFFFCC00) else Color.White,
+                                    start = Offset(x, h * 0.4f),
+                                    end = Offset(x, h * 0.85f),
+                                    strokeWidth = if (isNear) 3.dp.toPx() else 1.5.dp.toPx()
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Quick Lens Switcher Pills: 0.6x Wide • 1x • 2x • 5x • Dial
             Row(
                 modifier = Modifier
                     .background(Color(0x66000000), RoundedCornerShape(24.dp))
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                listOf(0.6f to ".5", 1f to "1", 2f to "2", 5f to "5").forEach { (z, label) ->
-                    val isSel = currentZoom == z
+                listOf(0.6f to ".6", 1f to "1", 2f to "2", 5f to "5", 10f to "10").forEach { (z, label) ->
+                    val isSel = abs(currentZoom - z) < 0.15f
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(34.dp)
                             .background(if (isSel) Color(0x44FFFFFF) else Color.Transparent, CircleShape)
-                            .clickable { currentZoom = z; camera?.cameraControl?.setZoomRatio(z) },
+                            .clickable {
+                                applySafeZoom(z)
+                                isZoomDialVisible = false
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -540,11 +604,21 @@ fun MasteriPhoneCameraScreen() {
                         )
                     }
                 }
+
+                // डायल टॉगल बटण (Arc Wheel उघडण्यासाठी)
+                Box(
+                    modifier = Modifier
+                        .background(if (isZoomDialVisible) Color(0xFFFFCC00) else Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                        .clickable { isZoomDialVisible = !isZoomDialVisible }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text("DIAL 휠", color = if (isZoomDialVisible) Color.Black else Color.White, fontSize = 10.sp)
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // 🔻 मुख्य मोड्स (Clean iOS Mode Strip)
+            // स्वच्छ मुख्य मोड्स (Clean Bottom Mode Strip)
             val cleanModes = listOf("PHOTO", "VIDEO", "PORTRAIT", "NIGHT", "PRO")
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -565,11 +639,10 @@ fun MasteriPhoneCameraScreen() {
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Shutter Row (आयफोन स्टाईल पांढरा रिंग शटर)
+            // Shutter Button
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 40.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.size(45.dp))
 
-                // 🍎 आयफोन क्लासिक शटर बटण
                 Box(
                     modifier = Modifier
                         .size(76.dp)
@@ -618,7 +691,7 @@ fun MasteriPhoneCameraScreen() {
         }
     }
 }// -------------------------------------------------------------
-// २. 🍎 iPhone 4K Video आणि Photo Engine (Styles + Filters)
+// २. 4K Video आणि Photo Engine (Styles + Filters सह थेट सेव्ह)
 // -------------------------------------------------------------
 fun startRealVideoRecording(
     context: Context,
@@ -627,7 +700,7 @@ fun startRealVideoRecording(
     photographicStyle: String,
     onComplete: () -> Unit
 ): Recording {
-    val name = "ProCam_iOS_${photographicStyle}_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())}"
+    val name = "ProCam_4K_${activeFilter}_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())}"
     val contentValues = ContentValues().apply {
         put(MediaStore.MediaColumns.DISPLAY_NAME, name)
         put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
@@ -649,12 +722,12 @@ fun startRealVideoRecording(
     return pending.start(ContextCompat.getMainExecutor(context)) { event ->
         when (event) {
             is VideoRecordEvent.Start -> {
-                Toast.makeText(context, "🔴 4K [ $photographicStyle ] रेकॉर्डिंग सुरू!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "🔴 4K [ $activeFilter ] रेकॉर्डिंग सुरू!", Toast.LENGTH_SHORT).show()
             }
             is VideoRecordEvent.Finalize -> {
                 onComplete()
                 if (!event.hasError()) {
-                    Toast.makeText(context, "🎥 4K व्हिडिओ सेव्ह झाला!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "🎥 4K व्हिडिओ गॅलरीत सेव्ह झाला!", Toast.LENGTH_LONG).show()
                 } else {
                     Toast.makeText(context, "रेकॉर्डिंग त्रुटी: ${event.error}", Toast.LENGTH_SHORT).show()
                 }
@@ -705,7 +778,6 @@ fun captureMegaProcessedPhoto(
 
                         var bmp = BitmapFactory.decodeFile(tempFile.absolutePath, decodeOptions) ?: return@Thread
 
-                        // Orientation दुरुस्त करणे
                         try {
                             val exif = android.media.ExifInterface(tempFile.absolutePath)
                             val orient = exif.getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL)
@@ -723,14 +795,14 @@ fun captureMegaProcessedPhoto(
                         // Aspect Ratio क्रॉप
                         bmp = cropToRealAspectRatio(bmp, aspectRatio)
 
-                        // १. 🍎 iPhone Photographic Style लागू करणे
+                        // १. iPhone Photographic Style
                         bmp = applyPhotographicStyle(bmp, photographicStyle)
 
                         // २. मोड इफेक्ट (Portrait, Night)
                         if (mode == "PORTRAIT") bmp = applyDSLRBokehEffect(bmp, blurLevel)
                         if (mode == "NIGHT") bmp = processNightPhoto(bmp)
 
-                        // ३. क्रिएटिव्ह फिल्टर इफेक्ट (Cinematic, Golden, etc.)
+                        // ३. क्रिएटिव्ह फिल्टर (Cinematic Letterbox, Golden, Cyberpunk, etc.)
                         bmp = when (activeFilter) {
                             "Cinematic" -> applyCinematicLetterbox(bmp)
                             "Golden" -> applyGoldenHourGlow(bmp)
@@ -745,7 +817,7 @@ fun captureMegaProcessedPhoto(
 
                         if (addWatermark) bmp = addBrandWatermark(bmp)
 
-                        saveFinalProcessedBitmap(context, bmp, "${mode}_${photographicStyle}")
+                        saveFinalProcessedBitmap(context, bmp, "${mode}_${activeFilter}")
                         tempFile.delete()
 
                     } catch (e: Throwable) {
@@ -953,13 +1025,15 @@ fun CompleteEditorScreen() {
 @Composable
 fun CompleteSettingsScreen() {
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(20.dp)) {
-        Text("⚙️ ProCam iOS Pro Settings", color = Color.White, fontSize = 22.sp)
+        Text("⚙️ ProCam 64MP OIS Settings", color = Color.White, fontSize = 22.sp)
         Spacer(modifier = Modifier.height(14.dp))
-        Text("📸 Primary Camera: 64 MP Ultra HD RAW", color = Color.LightGray)
+        Text("📸 Primary: 64 MP Ultra HD RAW", color = Color.LightGray)
         Spacer(modifier = Modifier.height(8.dp))
-        Text("🏃 Stabilization: iPhone Action Mode (Hardware OIS + EIS)", color = Color(0xFFFFCC00))
+        Text("🔭 Ultra-Wide: 8 MP (0.6x Real Lens)", color = Color.LightGray)
         Spacer(modifier = Modifier.height(8.dp))
-        Text("🎨 Styles: Standard, Rich Contrast, Vibrant, Warm, Cool", color = Color.LightGray)
+        Text("🔍 Zoom Dial: 0.6x to 10x Smooth Arc Wheel", color = Color(0xFFFFCC00))
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("🏃 Stabilization: Hardware OIS + Action Mode EIS", color = Color(0xFFFFCC00))
         Spacer(modifier = Modifier.height(8.dp))
         Text("🎥 Video: 4K @ 30FPS / 1080p @ 60FPS", color = Color.LightGray)
         Spacer(modifier = Modifier.height(8.dp))
@@ -977,17 +1051,8 @@ fun BottomNavBar(currentScreen: String, onTabSelected: (String) -> Unit) {
     }
 }
 
-@Composable
-fun QuickToggleButton(label: String, isActive: Boolean, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier.background(if (isActive) Color(0xFFFFCC00) else Color(0xFF222938), RoundedCornerShape(8.dp)).clickable { onClick() }.padding(horizontal = 8.dp, vertical = 6.dp)
-    ) {
-        Text(label, color = if (isActive) Color.Black else Color.White, fontSize = 11.sp)
-    }
-}
-
 // -------------------------------------------------------------
-// ६. 🍎 आयफोन PHOTOGRAPHIC STYLES चे खरे अल्गोरिदम्स
+// ६. Photographic Styles & All Mode Algorithms
 // -------------------------------------------------------------
 fun applyPhotographicStyle(src: Bitmap, style: String): Bitmap {
     val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
@@ -995,7 +1060,6 @@ fun applyPhotographicStyle(src: Bitmap, style: String): Bitmap {
     val cm = ColorMatrix()
 
     when (style) {
-        // रिच कॉन्ट्रास्ट: खोल सावल्या, हायलाईट्स सुरक्षित आणि सिनेमॅटिक लुक
         "Rich Contrast" -> {
             cm.set(floatArrayOf(
                 1.22f, 0f, 0f, 0f, -12f,
@@ -1004,7 +1068,6 @@ fun applyPhotographicStyle(src: Bitmap, style: String): Bitmap {
                 0f, 0f, 0f, 1f, 0f
             ))
         }
-        // व्हायब्रंट: त्वचा नैसर्गिक ठेवून आजूबाजूचे रंग चमकदार करणे
         "Vibrant" -> {
             cm.setSaturation(1.28f)
             val boost = ColorMatrix(floatArrayOf(
@@ -1015,7 +1078,6 @@ fun applyPhotographicStyle(src: Bitmap, style: String): Bitmap {
             ))
             cm.postConcat(boost)
         }
-        // वॉर्म: उबदार सोनेरी (Amber) अंडरटोन
         "Warm" -> {
             cm.set(floatArrayOf(
                 1.16f, 0f, 0f, 0f, 18f,
@@ -1024,7 +1086,6 @@ fun applyPhotographicStyle(src: Bitmap, style: String): Bitmap {
                 0f, 0f, 0f, 1f, 0f
             ))
         }
-        // कूल: थंड निळसर अंडरटोन
         "Cool" -> {
             cm.set(floatArrayOf(
                 0.90f, 0f, 0f, 0f, -8f,
@@ -1033,16 +1094,13 @@ fun applyPhotographicStyle(src: Bitmap, style: String): Bitmap {
                 0f, 0f, 0f, 1f, 0f
             ))
         }
-        else -> return src // Standard
+        else -> return src
     }
 
     canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
     return res
 }
 
-// -------------------------------------------------------------
-// ७. सर्व १०+ मोड्सचे खरे इमेज प्रोसेसिंग अल्गोरिदम्स
-// -------------------------------------------------------------
 fun applyDSLRBokehEffect(src: Bitmap, blurRadius: Float): Bitmap {
     val w = src.width
     val h = src.height
