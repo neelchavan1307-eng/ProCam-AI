@@ -68,7 +68,6 @@ import java.util.Locale
 import kotlin.math.*
 import kotlin.random.Random
 
-// डेटा क्लास ज्यामुळे Triple चा एरर कायमचा दूर झाला
 data class QuickMenuTile(
     val title: String,
     val subtitle: String,
@@ -407,7 +406,6 @@ fun MasterWheelCameraScreen() {
             }
         }
 
-        // 🔥 दुरुस्त केलेला ड्रॉपडाउन मेनू (१००% एरर-फ्री)
         AnimatedVisibility(
             visible = isQuickMenuOpen,
             modifier = Modifier.padding(top = 80.dp, start = 16.dp, end = 16.dp).align(Alignment.TopCenter)
@@ -767,7 +765,6 @@ fun captureMegaProcessedPhoto(
                         } catch (_: Exception) {}
 
                         bmp = cropToRealAspectRatio(bmp, aspectRatio)
-
                         bmp = applyPhotographicStyle(bmp, photographicStyle)
 
                         if (mode == "PORTRAIT") bmp = applyDSLRBokehEffect(bmp, blurLevel)
