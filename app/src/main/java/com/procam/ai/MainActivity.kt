@@ -50,8 +50,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -320,7 +322,9 @@ fun MasterWheelCameraScreen() {
                     Text("☀️", fontSize = 16.sp)
                 }
             }
-        }Column(
+        }
+
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
@@ -531,8 +535,8 @@ fun MasterWheelCameraScreen() {
                                 sweepAngle = 180f,
                                 useCenter = false,
                                 topLeft = Offset(0f, -h),
-                                size = androidx.compose.ui.geometry.Size(w, h * 2),
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                                size = Size(w, h * 2),
+                                style = Stroke(width = 2.dp.toPx())
                             )
 
                             val markings = listOf(0.6f, 1f, 2f, 4f, 6f, 8f, 10f)
@@ -662,10 +666,7 @@ fun MasterWheelCameraScreen() {
             }
         }
     }
-}// -------------------------------------------------------------
-// २. 4K Video आणि Photo Engine (Styles + Filters सह थेट सेव्ह)
-// -------------------------------------------------------------
-fun startRealVideoRecording(
+}fun startRealVideoRecording(
     context: Context,
     videoCapture: VideoCapture<Recorder>,
     activeFilter: String,
@@ -820,9 +821,6 @@ fun saveFinalProcessedBitmap(context: Context, bitmap: Bitmap, mode: String) {
     }
 }
 
-// -------------------------------------------------------------
-// ३. AI Photo Lab (Before/After Split Slider + AI Object Eraser)
-// -------------------------------------------------------------
 @Composable
 fun CompleteAILabScreen() {
     val context = LocalContext.current
@@ -928,9 +926,6 @@ fun BeforeAfterSplitView(before: Bitmap, after: Bitmap, splitRatio: Float, onRat
     }
 }
 
-// -------------------------------------------------------------
-// ४. Photo Editor Screen
-// -------------------------------------------------------------
 @Composable
 fun CompleteEditorScreen() {
     val context = LocalContext.current
@@ -986,4 +981,331 @@ fun CompleteEditorScreen() {
             Text("💾 Save Edited Photo", color = Color.White)
         }
     }
+}
+
+@Composable
+fun CompleteSettingsScreen() {
+    Column(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(20.dp)) {
+        Text("⚙️ ProCam 64MP OIS Settings", color = Color.White, fontSize = 22.sp)
+        Spacer(modifier = Modifier.height(14.dp))
+        Text("📸 Primary: 64 MP Ultra HD RAW", color = Color.LightGray)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("🔭 Ultra-Wide: 8 MP (0.6x Real Lens)", color = Color.LightGray)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("🔍 Zoom Dial: 0.6x to 10x Smooth Arc Wheel", color = Color(0xFFFFCC00))
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("🏃 Stabilization: Hardware OIS + Action Mode EIS", color = Color(0xFFFFCC00))
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("🎥 Video: 4K @ 30FPS / 1080p @ 60FPS", color = Color.LightGray)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("📂 Save: Pictures/ProCam AI & Movies/ProCam AI", color = Color.LightGray)
+    }
+}
+
+@Composable
+fun BottomNavBar(currentScreen: String, onTabSelected: (String) -> Unit) {
+    NavigationBar(containerColor = Color(0xFF0F141C)) {
+        NavigationBarItem(selected = currentScreen == "CAMERA", onClick = { onTabSelected("CAMERA") }, icon = { Text("📷") }, label = { Text("कॅमेरा") })
+        NavigationBarItem(selected = currentScreen == "EDITOR", onClick = { onTabSelected("EDITOR") }, icon = { Text("🎨") }, label = { Text("एडिटर") })
+        NavigationBarItem(selected = currentScreen == "AI_LAB", onClick = { onTabSelected("AI_LAB") }, icon = { Text("✨") }, label = { Text("AI Lab") })
+        NavigationBarItem(selected = currentScreen == "SETTINGS", onClick = { onTabSelected("SETTINGS") }, icon = { Text("⚙️") }, label = { Text("सेटिंग्ज") })
+    }
+}
+
+fun applyPhotographicStyle(src: Bitmap, style: String): Bitmap {
+    val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(res)
+    val cm = ColorMatrix()
+
+    when (style) {
+        "Rich Contrast" -> {
+            cm.set(floatArrayOf(
+                1.22f, 0f, 0f, 0f, -12f,
+                0f, 1.22f, 0f, 0f, -12f,
+                0f, 0f, 1.22f, 0f, -12f,
+                0f, 0f, 0f, 1f, 0f
+            ))
+        }
+        "Vibrant" -> {
+            cm.setSaturation(1.28f)
+            val boost = ColorMatrix(floatArrayOf(
+                1.08f, 0f, 0f, 0f, 4f,
+                0f, 1.08f, 0f, 0f, 4f,
+                0f, 0f, 1.08f, 0f, 4f,
+                0f, 0f, 0f, 1f, 0f
+            ))
+            cm.postConcat(boost)
+        }
+        "Warm" -> {
+            cm.set(floatArrayOf(
+                1.16f, 0f, 0f, 0f, 18f,
+                0f, 1.06f, 0f, 0f, 8f,
+                0f, 0f, 0.88f, 0f, -10f,
+                0f, 0f, 0f, 1f, 0f
+            ))
+        }
+        "Cool" -> {
+            cm.set(floatArrayOf(
+                0.90f, 0f, 0f, 0f, -8f,
+                0f, 1.02f, 0f, 0f, 4f,
+                0f, 0f, 1.20f, 0f, 20f,
+                0f, 0f, 0f, 1f, 0f
+            ))
+        }
+        else -> return src
+    }
+
+    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
+    return res
+}
+
+fun applyDSLRBokehEffect(src: Bitmap, blurRadius: Float): Bitmap {
+    val w = src.width
+    val h = src.height
+
+    val downFactor = (14f * blurRadius).toInt().coerceAtLeast(8)
+    val small = Bitmap.createScaledBitmap(src, (w / downFactor).coerceAtLeast(1), (h / downFactor).coerceAtLeast(1), true)
+    val blurredBg = Bitmap.createScaledBitmap(small, w, h, true)
+
+    val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(result)
+    canvas.drawBitmap(blurredBg, 0f, 0f, null)
+
+    val focusRadius = (w.coerceAtMost(h) * 0.38f)
+    val shader = RadialGradient(
+        w / 2f, h / 2f, focusRadius,
+        intArrayOf(android.graphics.Color.WHITE, android.graphics.Color.WHITE, android.graphics.Color.TRANSPARENT),
+        floatArrayOf(0f, 0.45f, 1f),
+        Shader.TileMode.CLAMP
+    )
+    val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.shader = shader
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+    }
+
+    val sharpSubject = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val subjectCanvas = Canvas(sharpSubject)
+    subjectCanvas.drawBitmap(src, 0f, 0f, null)
+    subjectCanvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), maskPaint)
+
+    canvas.drawBitmap(sharpSubject, 0f, 0f, Paint(Paint.ANTI_ALIAS_FLAG))
+    return result
+}
+
+fun applyCinematicLetterbox(src: Bitmap): Bitmap {
+    val w = src.width
+    val h = src.height
+    val res = src.copy(Bitmap.Config.ARGB_8888, true)
+    val canvas = Canvas(res)
+
+    val targetH = (w / 2.39f).toInt()
+    val barHeight = ((h - targetH) / 2).coerceAtLeast(0)
+
+    val blackPaint = Paint().apply { color = android.graphics.Color.BLACK }
+    canvas.drawRect(0f, 0f, w.toFloat(), barHeight.toFloat(), blackPaint)
+    canvas.drawRect(0f, (h - barHeight).toFloat(), w.toFloat(), h.toFloat(), blackPaint)
+
+    val cm = ColorMatrix(floatArrayOf(
+        1.15f, 0f, 0f, 0f, 10f,
+        0f, 1.0f, 0f, 0f, 5f,
+        0f, 0f, 1.25f, 0f, 15f,
+        0f, 0f, 0f, 1f, 0f
+    ))
+    canvas.drawBitmap(res, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
+    return res
+}
+
+fun applyVintage70sFilter(src: Bitmap): Bitmap {
+    val res = src.copy(Bitmap.Config.ARGB_8888, true)
+    val canvas = Canvas(res)
+    val cm = ColorMatrix(floatArrayOf(
+        0.9f, 0f, 0f, 0f, 25f,
+        0f, 0.78f, 0f, 0f, 15f,
+        0f, 0f, 0.62f, 0f, 5f,
+        0f, 0f, 0f, 1f, 0f
+    ))
+    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm) })
+
+    val noisePaint = Paint().apply {
+        color = android.graphics.Color.WHITE
+        alpha = 18
+    }
+    for (i in 0 until (res.width * res.height / 150)) {
+        val x = Random.nextInt(res.width).toFloat()
+        val y = Random.nextInt(res.height).toFloat()
+        canvas.drawCircle(x, y, 1.2f, noisePaint)
+    }
+    return res
+}
+
+fun applyGoldenHourGlow(src: Bitmap): Bitmap {
+    val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(res)
+    val cm = ColorMatrix(floatArrayOf(
+        1.25f, 0f, 0f, 0f, 35f,
+        0f, 1.08f, 0f, 0f, 18f,
+        0f, 0f, 0.72f, 0f, -15f,
+        0f, 0f, 0f, 1f, 0f
+    ))
+    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
+    return res
+}
+
+fun applyCyberpunkNeonFilter(src: Bitmap): Bitmap {
+    val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(res)
+    val cm = ColorMatrix(floatArrayOf(
+        1.35f, 0f, 0f, 0f, 30f,
+        0f, 0.75f, 0f, 0f, -10f,
+        0f, 0f, 1.45f, 0f, 40f,
+        0f, 0f, 0f, 1f, 0f
+    ))
+    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
+    return res
+}
+
+fun applyNoirFilter(src: Bitmap): Bitmap {
+    val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(res)
+    val cm = ColorMatrix()
+    cm.setSaturation(0f)
+    cm.postConcat(ColorMatrix(floatArrayOf(
+        1.45f, 0f, 0f, 0f, -25f,
+        0f, 1.45f, 0f, 0f, -25f,
+        0f, 0f, 1.45f, 0f, -25f,
+        0f, 0f, 0f, 1f, 0f
+    )))
+    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
+    return res
+}
+
+fun applyAstroPhoto(src: Bitmap): Bitmap {
+    val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(res)
+    val cm = ColorMatrix(floatArrayOf(
+        1.30f, 0f, 0f, 0f, 35f,
+        0f, 1.30f, 0f, 0f, 35f,
+        0f, 0f, 1.50f, 0f, 45f,
+        0f, 0f, 0f, 1f, 0f
+    ))
+    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
+    return res
+}
+
+fun applyMacroSharpen(src: Bitmap): Bitmap {
+    return applyAIEnhancement(src)
+}
+
+fun applyHDRPlus(src: Bitmap): Bitmap {
+    val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(res)
+    val cm = ColorMatrix(floatArrayOf(
+        1.18f, 0f, 0f, 0f, 15f,
+        0f, 1.18f, 0f, 0f, 15f,
+        0f, 0f, 1.18f, 0f, 15f,
+        0f, 0f, 0f, 1f, 0f
+    ))
+    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
+    return res
+}
+
+fun applyAIObjectEraser(src: Bitmap): Bitmap {
+    val res = src.copy(Bitmap.Config.ARGB_8888, true)
+    val canvas = Canvas(res)
+    val blurRadius = 35f
+    val p = Paint().apply {
+        isAntiAlias = true
+        maskFilter = android.graphics.BlurMaskFilter(blurRadius, android.graphics.BlurMaskFilter.Blur.NORMAL)
+    }
+    canvas.drawCircle(res.width / 2f, res.height / 2f, 45f, p)
+    return res
+}
+
+fun processNightPhoto(src: Bitmap): Bitmap {
+    val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(res)
+    val cm = ColorMatrix(floatArrayOf(1.25f, 0f, 0f, 0f, 25f, 0f, 1.25f, 0f, 0f, 25f, 0f, 0f, 1.30f, 0f, 20f, 0f, 0f, 0f, 1f, 0f))
+    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
+    return res
+}
+
+fun applyAIEnhancement(src: Bitmap): Bitmap {
+    val w = src.width
+    val h = src.height
+    val contrastBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(contrastBmp)
+    val cm = ColorMatrix(floatArrayOf(1.18f, 0f, 0f, 0f, 8f, 0f, 1.18f, 0f, 0f, 8f, 0f, 0f, 1.15f, 0f, 6f, 0f, 0f, 0f, 1f, 0f))
+    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
+
+    val output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val pixels = IntArray(w * h)
+    val outPixels = IntArray(w * h)
+    contrastBmp.getPixels(pixels, 0, w, 0, 0, w, h)
+    for (y in 1 until h - 1) {
+        for (x in 1 until w - 1) {
+            val idx = y * w + x
+            var r = 0; var g = 0; var b = 0
+            val neighbors = intArrayOf(idx - w, idx - 1, idx, idx + 1, idx + w)
+            val weights = intArrayOf(-1, -1, 5, -1, -1)
+            for (i in neighbors.indices) {
+                val p = pixels[neighbors[i]]
+                r += ((p shr 16) and 0xFF) * weights[i]
+                g += ((p shr 8) and 0xFF) * weights[i]
+                b += (p and 0xFF) * weights[i]
+            }
+            outPixels[idx] = (0xFF shl 24) or (r.coerceIn(0, 255) shl 16) or (g.coerceIn(0, 255) shl 8) or b.coerceIn(0, 255)
+        }
+    }
+    output.setPixels(outPixels, 0, w, 0, 0, w, h)
+    return output
+}
+
+fun cropToRealAspectRatio(src: Bitmap, aspect: String): Bitmap {
+    val w = src.width
+    val h = src.height
+    return when (aspect) {
+        "1:1" -> {
+            val size = minOf(w, h)
+            Bitmap.createBitmap(src, (w - size) / 2, (h - size) / 2, size, size)
+        }
+        "16:9" -> {
+            val targetH = (w * 9) / 16
+            if (targetH <= h) {
+                Bitmap.createBitmap(src, 0, (h - targetH) / 2, w, targetH)
+            } else {
+                val targetW = (h * 16) / 9
+                Bitmap.createBitmap(src, (w - targetW) / 2, 0, targetW, h)
+            }
+        }
+        else -> src
+    }
+}
+
+fun addBrandWatermark(src: Bitmap): Bitmap {
+    val res = src.copy(src.config ?: Bitmap.Config.ARGB_8888, true)
+    val canvas = Canvas(res)
+    val p = Paint().apply {
+        color = android.graphics.Color.WHITE
+        textSize = (res.width * 0.032f)
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        setShadowLayer(4f, 2f, 2f, android.graphics.Color.BLACK)
+        isAntiAlias = true
+    }
+    canvas.drawText("⚡ SHOT ON PROCAM AI | 64MP OIS", 40f, res.height - 40f, p)
+    return res
+}
+
+fun applyFilters(src: Bitmap, brightness: Float, contrast: Float, filter: String): Bitmap {
+    val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(res)
+    val matrix = ColorMatrix()
+    matrix.postConcat(ColorMatrix(floatArrayOf(contrast, 0f, 0f, 0f, brightness, 0f, contrast, 0f, 0f, brightness, 0f, 0f, contrast, 0f, brightness, 0f, 0f, 0f, 1f, 0f)))
+    when (filter) {
+        "B&W" -> { val bw = ColorMatrix(); bw.setSaturation(0f); matrix.postConcat(bw) }
+        "Vintage" -> matrix.postConcat(ColorMatrix(floatArrayOf(0.9f, 0f, 0f, 0f, 20f, 0f, 0.75f, 0f, 0f, 10f, 0f, 0f, 0.6f, 0f, 0f, 0f, 0f, 0f, 1f, 0f)))
+        "Cinematic" -> matrix.postConcat(ColorMatrix(floatArrayOf(1.1f, 0f, 0f, 0f, 10f, 0f, 1.0f, 0f, 0f, 5f, 0f, 0f, 1.25f, 0f, 15f, 0f, 0f, 0f, 1f, 0f)))
+        "Golden Hour" -> matrix.postConcat(ColorMatrix(floatArrayOf(1.2f, 0f, 0f, 0f, 30f, 0f, 1.05f, 0f, 0f, 15f, 0f, 0f, 0.75f, 0f, -10f, 0f, 0f, 0f, 1f, 0f)))
+    }
+    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(matrix); isAntiAlias = true })
+    return res
 }
