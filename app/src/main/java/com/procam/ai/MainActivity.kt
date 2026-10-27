@@ -647,7 +647,8 @@ fun PureCinemaCameraApp() {
             }
         }
     }
-}fun startRealVideoRecording(
+}
+fun startRealVideoRecording(
     context: Context,
     videoCapture: VideoCapture<Recorder>,
     activeFilter: String,
