@@ -3,6 +3,7 @@ package com.procam.ai
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
@@ -30,13 +31,12 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
 import java.io.File
-import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.random.Random
 
 // -------------------------------------------------------------
-// १. Media3 Transformer: गॅलरीतील व्हिडिओवर खरा ९-इन-१ इफेक्ट लावून MP4 सेव्ह करणे
+// १. Media3 Transformer: 4K Cinematic Video Export
 // -------------------------------------------------------------
 @OptIn(UnstableApi::class)
 fun exportCinematicVideoWithTransformer(
@@ -50,13 +50,11 @@ fun exportCinematicVideoWithTransformer(
 
     val mediaItem = MediaItem.fromUri(inputVideoUri)
 
-    // निवडलेल्या पॅकनुसार व्हिडिओ फ्रेम्सवर खरा GL इफेक्ट लावणे
     val videoEffects = mutableListOf<androidx.media3.common.Effect>()
     when (presetName) {
         "Cinematic 9-in-1" -> {
-            // Teal & Orange + ड्रॅमॅटिक सिनेमॅटिक कॉन्ट्रास्ट
             videoEffects.add(Contrast(0.25f))
-            videoEffects.add(RgbAdjustment.Builder().setRedScale(1.15f).setBlueScale(1.25f).build())
+            videoEffects.add(RgbAdjustment.Builder().setRedScale(1.10f).setBlueScale(1.15f).build())
         }
         "Video Glow" -> {
             videoEffects.add(Contrast(0.1f))
@@ -64,11 +62,11 @@ fun exportCinematicVideoWithTransformer(
         }
         "Retro Film" -> {
             videoEffects.add(Contrast(0.15f))
-            videoEffects.add(RgbAdjustment.Builder().setRedScale(1.1f).setBlueScale(0.85f).build())
+            videoEffects.add(RgbAdjustment.Builder().setRedScale(1.08f).setBlueScale(0.90f).build())
         }
         "Urban Night" -> {
             videoEffects.add(Contrast(0.35f))
-            videoEffects.add(RgbAdjustment.Builder().setRedScale(1.2f).setBlueScale(1.35f).build())
+            videoEffects.add(RgbAdjustment.Builder().setRedScale(1.15f).setBlueScale(1.30f).build())
         }
         else -> {
             videoEffects.add(Contrast(0.1f))
@@ -82,7 +80,6 @@ fun exportCinematicVideoWithTransformer(
     val transformer = Transformer.Builder(context)
         .addListener(object : Transformer.Listener {
             override fun onCompleted(composition: Composition, exportResult: ExportResult) {
-                // रेंडर झालेला नवा व्हिडिओ MediaStore (गॅलरीत) कॉपी करणे
                 val filename = "ProCam_Studio_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())}"
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
@@ -117,15 +114,19 @@ fun exportCinematicVideoWithTransformer(
 
     try {
         transformer.start(editedMediaItem, cacheOutputFile.absolutePath)
-        Toast.makeText(context, "⚡ $presetName व्हिडिओ रेंडरिंग सुरू झाले...", Toast.LENGTH_SHORT).show()
+        mainHandler.post {
+            Toast.makeText(context, "⚡ $presetName व्हिडिओ रेंडरिंग सुरू झाले...", Toast.LENGTH_SHORT).show()
+        }
     } catch (e: Exception) {
-        Toast.makeText(context, "प्रक्रिया सुरू करताना अडचण: ${e.message}", Toast.LENGTH_SHORT).show()
+        mainHandler.post {
+            Toast.makeText(context, "प्रक्रिया सुरू करताना अडचण: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
         onComplete(false)
     }
 }
 
 // -------------------------------------------------------------
-// २. फोटोसाठी ९-इन-१ MASTER CINEMATIC LOOK (Green-Orange, Oppenheimer, Wong Kar-wai, Glow, Letterbox)
+// २. 🎬 दुरुस्त केलेला ९-इन-१ MASTER CINEMATIC LOOK (Smart Letterbox + Balanced Colors)
 // -------------------------------------------------------------
 fun applyMasterCinematic9in1(src: Bitmap): Bitmap {
     val w = src.width
@@ -133,16 +134,23 @@ fun applyMasterCinematic9in1(src: Bitmap): Bitmap {
     val res = src.copy(Bitmap.Config.ARGB_8888, true)
     val canvas = Canvas(res)
 
+    // १. संतुलित सिनेमॅटिक टोन (गुलाबीपणा न येता अस्सल हॉलिवूड लुक)
     val cm = ColorMatrix(floatArrayOf(
-        1.25f, 0f, 0f, 0f, 12f,
-        0f, 1.05f, 0f, 0f, 2f,
-        0f, 0f, 1.35f, 0f, 18f,
+        1.10f, 0f, 0f, 0f, 2f,     // Balanced Warm Red
+        0f, 1.04f, 0f, 0f, 0f,     // Natural Midtones
+        0f, 0f, 1.18f, 0f, 6f,     // Deep Shadows & Water
         0f, 0f, 0f, 1f, 0f
     ))
     canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
 
-    val targetH = (w / 2.39f).toInt()
-    val barHeight = ((h - targetH) / 2).coerceAtLeast(0)
+    // २. स्मार्ट काळ्या सिनेमॅटिक पट्ट्या (फोटो चपटा न होता सुंदर दिसेल)
+    val barHeight = if (h > w) {
+        (h * 0.055f).toInt() // उभ्या फोटोसाठी प्रमाणबद्ध ५.५% बॉर्डर्स
+    } else {
+        val targetH = (w / 2.39f).toInt()
+        ((h - targetH) / 2).coerceAtLeast(0)
+    }
+
     val blackPaint = Paint().apply { color = android.graphics.Color.BLACK }
     canvas.drawRect(0f, 0f, w.toFloat(), barHeight.toFloat(), blackPaint)
     canvas.drawRect(0f, (h - barHeight).toFloat(), w.toFloat(), h.toFloat(), blackPaint)
@@ -154,9 +162,9 @@ fun applyVideoGlowHalo(src: Bitmap): Bitmap {
     val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(res)
     val cm = ColorMatrix(floatArrayOf(
-        1.12f, 0f, 0f, 0f, 22f,
-        0f, 1.10f, 0f, 0f, 20f,
-        0f, 0f, 1.15f, 0f, 25f,
+        1.08f, 0f, 0f, 0f, 15f,
+        0f, 1.06f, 0f, 0f, 15f,
+        0f, 0f, 1.10f, 0f, 18f,
         0f, 0f, 0f, 1f, 0f
     ))
     canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
@@ -169,13 +177,13 @@ fun applyPhotographicStyle(src: Bitmap, style: String): Bitmap {
     val cm = ColorMatrix()
 
     when (style) {
-        "Rich Contrast" -> cm.set(floatArrayOf(1.22f, 0f, 0f, 0f, -12f, 0f, 1.22f, 0f, 0f, -12f, 0f, 0f, 1.22f, 0f, -12f, 0f, 0f, 0f, 1f, 0f))
+        "Rich Contrast" -> cm.set(floatArrayOf(1.18f, 0f, 0f, 0f, -8f, 0f, 1.18f, 0f, 0f, -8f, 0f, 0f, 1.18f, 0f, -8f, 0f, 0f, 0f, 1f, 0f))
         "Vibrant" -> {
-            cm.setSaturation(1.28f)
-            cm.postConcat(ColorMatrix(floatArrayOf(1.08f, 0f, 0f, 0f, 4f, 0f, 1.08f, 0f, 0f, 4f, 0f, 0f, 1.08f, 0f, 4f, 0f, 0f, 0f, 1f, 0f)))
+            cm.setSaturation(1.20f)
+            cm.postConcat(ColorMatrix(floatArrayOf(1.05f, 0f, 0f, 0f, 2f, 0f, 1.05f, 0f, 0f, 2f, 0f, 0f, 1.05f, 0f, 2f, 0f, 0f, 0f, 1f, 0f)))
         }
-        "Warm" -> cm.set(floatArrayOf(1.16f, 0f, 0f, 0f, 18f, 0f, 1.06f, 0f, 0f, 8f, 0f, 0f, 0.88f, 0f, -10f, 0f, 0f, 0f, 1f, 0f))
-        "Cool" -> cm.set(floatArrayOf(0.90f, 0f, 0f, 0f, -8f, 0f, 1.02f, 0f, 0f, 4f, 0f, 0f, 1.20f, 0f, 20f, 0f, 0f, 0f, 1f, 0f))
+        "Warm" -> cm.set(floatArrayOf(1.10f, 0f, 0f, 0f, 12f, 0f, 1.04f, 0f, 0f, 6f, 0f, 0f, 0.92f, 0f, -6f, 0f, 0f, 0f, 1f, 0f))
+        "Cool" -> cm.set(floatArrayOf(0.92f, 0f, 0f, 0f, -4f, 0f, 1.02f, 0f, 0f, 2f, 0f, 0f, 1.15f, 0f, 14f, 0f, 0f, 0f, 1f, 0f))
         else -> return src
     }
 
@@ -208,12 +216,12 @@ fun applyDSLRBokehEffect(src: Bitmap, blurRadius: Float): Bitmap {
 fun applyVintage70sFilter(src: Bitmap): Bitmap {
     val res = src.copy(Bitmap.Config.ARGB_8888, true)
     val canvas = Canvas(res)
-    val cm = ColorMatrix(floatArrayOf(0.9f, 0f, 0f, 0f, 25f, 0f, 0.78f, 0f, 0f, 15f, 0f, 0f, 0.62f, 0f, 5f, 0f, 0f, 0f, 1f, 0f))
+    val cm = ColorMatrix(floatArrayOf(0.92f, 0f, 0f, 0f, 15f, 0f, 0.82f, 0f, 0f, 10f, 0f, 0f, 0.70f, 0f, 4f, 0f, 0f, 0f, 1f, 0f))
     canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm) })
 
-    val noisePaint = Paint().apply { color = android.graphics.Color.WHITE; alpha = 18 }
-    for (i in 0 until (res.width * res.height / 150)) {
-        canvas.drawCircle(Random.nextInt(res.width).toFloat(), Random.nextInt(res.height).toFloat(), 1.2f, noisePaint)
+    val noisePaint = Paint().apply { color = android.graphics.Color.WHITE; alpha = 14 }
+    for (i in 0 until (res.width * res.height / 180)) {
+        canvas.drawCircle(Random.nextInt(res.width).toFloat(), Random.nextInt(res.height).toFloat(), 1.0f, noisePaint)
     }
     return res
 }
@@ -221,7 +229,7 @@ fun applyVintage70sFilter(src: Bitmap): Bitmap {
 fun applyGoldenHourGlow(src: Bitmap): Bitmap {
     val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(res)
-    val cm = ColorMatrix(floatArrayOf(1.25f, 0f, 0f, 0f, 35f, 0f, 1.08f, 0f, 0f, 18f, 0f, 0f, 0.72f, 0f, -15f, 0f, 0f, 0f, 1f, 0f))
+    val cm = ColorMatrix(floatArrayOf(1.15f, 0f, 0f, 0f, 20f, 0f, 1.06f, 0f, 0f, 12f, 0f, 0f, 0.80f, 0f, -8f, 0f, 0f, 0f, 1f, 0f))
     canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
     return res
 }
@@ -229,7 +237,7 @@ fun applyGoldenHourGlow(src: Bitmap): Bitmap {
 fun applyCyberpunkNeonFilter(src: Bitmap): Bitmap {
     val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(res)
-    val cm = ColorMatrix(floatArrayOf(1.35f, 0f, 0f, 0f, 30f, 0f, 0.75f, 0f, 0f, -10f, 0f, 0f, 1.45f, 0f, 40f, 0f, 0f, 0f, 1f, 0f))
+    val cm = ColorMatrix(floatArrayOf(1.20f, 0f, 0f, 0f, 18f, 0f, 0.85f, 0f, 0f, -4f, 0f, 0f, 1.35f, 0f, 24f, 0f, 0f, 0f, 1f, 0f))
     canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
     return res
 }
@@ -239,7 +247,7 @@ fun applyNoirFilter(src: Bitmap): Bitmap {
     val canvas = Canvas(res)
     val cm = ColorMatrix()
     cm.setSaturation(0f)
-    cm.postConcat(ColorMatrix(floatArrayOf(1.45f, 0f, 0f, 0f, -25f, 0f, 1.45f, 0f, 0f, -25f, 0f, 0f, 1.45f, 0f, -25f, 0f, 0f, 0f, 1f, 0f)))
+    cm.postConcat(ColorMatrix(floatArrayOf(1.35f, 0f, 0f, 0f, -18f, 0f, 1.35f, 0f, 0f, -18f, 0f, 0f, 1.35f, 0f, -18f, 0f, 0f, 0f, 1f, 0f)))
     canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
     return res
 }
@@ -247,7 +255,7 @@ fun applyNoirFilter(src: Bitmap): Bitmap {
 fun applyAstroPhoto(src: Bitmap): Bitmap {
     val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(res)
-    val cm = ColorMatrix(floatArrayOf(1.30f, 0f, 0f, 0f, 35f, 0f, 1.30f, 0f, 0f, 35f, 0f, 0f, 1.50f, 0f, 45f, 0f, 0f, 0f, 1f, 0f))
+    val cm = ColorMatrix(floatArrayOf(1.20f, 0f, 0f, 0f, 22f, 0f, 1.20f, 0f, 0f, 22f, 0f, 0f, 1.40f, 0f, 32f, 0f, 0f, 0f, 1f, 0f))
     canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
     return res
 }
@@ -257,7 +265,7 @@ fun applyMacroSharpen(src: Bitmap): Bitmap { return applyAIEnhancement(src) }
 fun applyHDRPlus(src: Bitmap): Bitmap {
     val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(res)
-    val cm = ColorMatrix(floatArrayOf(1.18f, 0f, 0f, 0f, 15f, 0f, 1.18f, 0f, 0f, 15f, 0f, 0f, 1.18f, 0f, 15f, 0f, 0f, 0f, 1f, 0f))
+    val cm = ColorMatrix(floatArrayOf(1.12f, 0f, 0f, 0f, 8f, 0f, 1.12f, 0f, 0f, 8f, 0f, 0f, 1.12f, 0f, 8f, 0f, 0f, 0f, 1f, 0f))
     canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
     return res
 }
@@ -265,7 +273,8 @@ fun applyHDRPlus(src: Bitmap): Bitmap {
 fun applyAIObjectEraser(src: Bitmap): Bitmap {
     val res = src.copy(Bitmap.Config.ARGB_8888, true)
     val canvas = Canvas(res)
-    val p = Paint().apply { isAntiAlias = true; maskFilter = android.graphics.BlurMaskFilter(35f, android.graphics.BlurMaskFilter.Blur.NORMAL) }
+    val blurRadius = 35f
+    val p = Paint().apply { isAntiAlias = true; maskFilter = android.graphics.BlurMaskFilter(blurRadius, android.graphics.BlurMaskFilter.Blur.NORMAL) }
     canvas.drawCircle(res.width / 2f, res.height / 2f, 45f, p)
     return res
 }
@@ -273,7 +282,7 @@ fun applyAIObjectEraser(src: Bitmap): Bitmap {
 fun processNightPhoto(src: Bitmap): Bitmap {
     val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(res)
-    val cm = ColorMatrix(floatArrayOf(1.25f, 0f, 0f, 0f, 25f, 0f, 1.25f, 0f, 0f, 25f, 0f, 0f, 1.30f, 0f, 20f, 0f, 0f, 0f, 1f, 0f))
+    val cm = ColorMatrix(floatArrayOf(1.18f, 0f, 0f, 0f, 16f, 0f, 1.18f, 0f, 0f, 16f, 0f, 0f, 1.22f, 0f, 14f, 0f, 0f, 0f, 1f, 0f))
     canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
     return res
 }
@@ -282,7 +291,7 @@ fun applyAIEnhancement(src: Bitmap): Bitmap {
     val w = src.width; val h = src.height
     val contrastBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(contrastBmp)
-    val cm = ColorMatrix(floatArrayOf(1.18f, 0f, 0f, 0f, 8f, 0f, 1.18f, 0f, 0f, 8f, 0f, 0f, 1.15f, 0f, 6f, 0f, 0f, 0f, 1f, 0f))
+    val cm = ColorMatrix(floatArrayOf(1.12f, 0f, 0f, 0f, 4f, 0f, 1.12f, 0f, 0f, 4f, 0f, 0f, 1.10f, 0f, 4f, 0f, 0f, 0f, 1f, 0f))
     canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
 
     val output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -310,7 +319,7 @@ fun applyAIEnhancement(src: Bitmap): Bitmap {
 fun cropToRealAspectRatio(src: Bitmap, aspect: String): Bitmap {
     val w = src.width; val h = src.height
     return when (aspect) {
-        "1:1" -> { val s = minOf(w, h); Bitmap.createBitmap(src, (w - s) / 2, (h - sizeSquare(w, h)) / 2, s, s) }
+        "1:1" -> { val s = minOf(w, h); Bitmap.createBitmap(src, (w - s) / 2, (h - s) / 2, s, s) }
         "16:9" -> {
             val targetH = (w * 9) / 16
             if (targetH <= h) Bitmap.createBitmap(src, 0, (h - targetH) / 2, w, targetH)
@@ -319,7 +328,6 @@ fun cropToRealAspectRatio(src: Bitmap, aspect: String): Bitmap {
         else -> src
     }
 }
-private fun sizeSquare(w: Int, h: Int) = minOf(w, h)
 
 fun addBrandWatermark(src: Bitmap): Bitmap {
     val res = src.copy(src.config ?: Bitmap.Config.ARGB_8888, true)
@@ -331,11 +339,14 @@ fun addBrandWatermark(src: Bitmap): Bitmap {
         setShadowLayer(4f, 2f, 2f, android.graphics.Color.BLACK)
         isAntiAlias = true
     }
-    canvas.drawText("⚡ SHOT ON PROCAM AI | 64MP OIS", 40f, res.height - 40f, p)
+    // डाव्या कोपऱ्यात सुंदर वॉटरमार्क
+    canvas.drawText("⚡ SHOT ON PROCAM AI | 64MP OIS", 40f, res.height - 30f, p)
     return res
 }
 
+// 🔥 सुरक्षित Toast (ज्यामुळे "Can't toast on a thread..." चा एरर कायमचा मिटला)
 fun saveFinalProcessedBitmap(context: Context, bitmap: Bitmap, mode: String) {
+    val mainHandler = Handler(Looper.getMainLooper())
     val name = "ProCam_${mode}_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())}"
     val contentValues = ContentValues().apply {
         put(MediaStore.MediaColumns.DISPLAY_NAME, name)
@@ -349,32 +360,8 @@ fun saveFinalProcessedBitmap(context: Context, bitmap: Bitmap, mode: String) {
         context.contentResolver.openOutputStream(it)?.use { s ->
             bitmap.compress(Bitmap.CompressFormat.JPEG, 95, s)
         }
-        Toast.makeText(context, "✅ $mode सेव्ह झाला!", Toast.LENGTH_SHORT).show()
+        mainHandler.post {
+            Toast.makeText(context, "✅ $mode फोटो गॅलरीत सेव्ह झाला!", Toast.LENGTH_SHORT).show()
+        }
     }
-}
-// 🎬 मोठ्या सिनेमा कॅमेऱ्यासारखा Rich Color Grading अल्गोरिदम
-fun applyRichCinemaGrade(src: Bitmap): Bitmap {
-    val w = src.width
-    val h = src.height
-    val res = src.copy(Bitmap.Config.ARGB_8888, true)
-    val canvas = Canvas(res)
-
-    // १. पानांमधील लाल/नारंगी आणि पाण्यातील निळा रंग रसरशीत करणे (व्हिडिओसारखा लूक)
-    val cm = ColorMatrix(floatArrayOf(
-        1.38f, 0f, 0f, 0f, -8f,   // Rich Amber & Crimson (पानांचे रंग)
-        0f, 1.12f, 0f, 0f, -6f,   // Deep Green Contrast
-        0f, 0f, 1.48f, 0f, -4f,   // Deep Sapphire Blue (पाण्याचे प्रतिबिंब)
-        0f, 0f, 0f, 1f, 0f
-    ))
-    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
-
-    // २. सिनेमॅटिक 2.39:1 Letterbox काळ्या पट्ट्या
-    val targetH = (w / 2.39f).toInt()
-    val barHeight = ((h - targetH) / 2).coerceAtLeast(0)
-    val blackPaint = Paint().apply { color = android.graphics.Color.BLACK }
-    canvas.drawRect(0f, 0f, w.toFloat(), barHeight.toFloat(), blackPaint)
-    canvas.drawRect(0f, (h - barHeight).toFloat(), w.toFloat(), h.toFloat(), blackPaint)
-
-    // ३. क्रिस्टल क्लिअर शार्पनेस
-    return applyAIEnhancement(res)
 }
