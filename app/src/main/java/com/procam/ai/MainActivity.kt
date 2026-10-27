@@ -294,7 +294,8 @@ fun PureCinemaCameraApp() {
                     Text("☀️", fontSize = 16.sp)
                 }
             }
-        }Box(
+        }
+        Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = 16.dp, bottom = 120.dp)
