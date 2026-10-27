@@ -352,3 +352,29 @@ fun saveFinalProcessedBitmap(context: Context, bitmap: Bitmap, mode: String) {
         Toast.makeText(context, "✅ $mode सेव्ह झाला!", Toast.LENGTH_SHORT).show()
     }
 }
+// 🎬 मोठ्या सिनेमा कॅमेऱ्यासारखा Rich Color Grading अल्गोरिदम
+fun applyRichCinemaGrade(src: Bitmap): Bitmap {
+    val w = src.width
+    val h = src.height
+    val res = src.copy(Bitmap.Config.ARGB_8888, true)
+    val canvas = Canvas(res)
+
+    // १. पानांमधील लाल/नारंगी आणि पाण्यातील निळा रंग रसरशीत करणे (व्हिडिओसारखा लूक)
+    val cm = ColorMatrix(floatArrayOf(
+        1.38f, 0f, 0f, 0f, -8f,   // Rich Amber & Crimson (पानांचे रंग)
+        0f, 1.12f, 0f, 0f, -6f,   // Deep Green Contrast
+        0f, 0f, 1.48f, 0f, -4f,   // Deep Sapphire Blue (पाण्याचे प्रतिबिंब)
+        0f, 0f, 0f, 1f, 0f
+    ))
+    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
+
+    // २. सिनेमॅटिक 2.39:1 Letterbox काळ्या पट्ट्या
+    val targetH = (w / 2.39f).toInt()
+    val barHeight = ((h - targetH) / 2).coerceAtLeast(0)
+    val blackPaint = Paint().apply { color = android.graphics.Color.BLACK }
+    canvas.drawRect(0f, 0f, w.toFloat(), barHeight.toFloat(), blackPaint)
+    canvas.drawRect(0f, (h - barHeight).toFloat(), w.toFloat(), h.toFloat(), blackPaint)
+
+    // ३. क्रिस्टल क्लिअर शार्पनेस
+    return applyAIEnhancement(res)
+}
