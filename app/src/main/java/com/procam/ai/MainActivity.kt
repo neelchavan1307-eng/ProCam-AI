@@ -6,10 +6,15 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.hardware.camera2.CaptureRequest
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.view.KeyEvent
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -30,6 +35,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -66,11 +72,24 @@ data class QuickMenuTile(
 )
 
 class MainActivity : ComponentActivity() {
+    // 📱 आवाजाच्या बटनाने (Volume Keys) फोटो/व्हिडिओ ट्रिगर करणे
+    var onVolumeTrigger: (() -> Unit)? = null
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            onVolumeTrigger?.invoke()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
-                PureCinemaCameraApp()
+                UltimateCameraEngineApp(
+                    registerVolumeTrigger = { action -> onVolumeTrigger = action }
+                )
             }
         }
     }
@@ -78,7 +97,7 @@ class MainActivity : ComponentActivity() {
 
 @androidx.annotation.OptIn(ExperimentalCamera2Interop::class)
 @Composable
-fun PureCinemaCameraApp() {
+fun UltimateCameraEngineApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
@@ -98,8 +117,8 @@ fun PureCinemaCameraApp() {
     var isZoomDialVisible by remember { mutableStateOf(false) }
 
     var selectedMode by remember { mutableStateOf("PHOTO") }
-    // 🔥 वर निवडलेला फिल्टर (Cinematic 9-in-1, Glow, Retro, इ.)
-    var activeFilter by remember { mutableStateOf("Cinematic Look (9-in-1)") }
+    // 🚫 कॅमेरा उघडताच डीफॉल्ट स्वच्छ "Normal" मोड!
+    var activeFilter by remember { mutableStateOf("Normal") }
 
     var selectedVideoResolution by remember { mutableStateOf("4K") }
     var isActionModeOn by remember { mutableStateOf(false) }
@@ -114,7 +133,7 @@ fun PureCinemaCameraApp() {
     var isHDROn by remember { mutableStateOf(true) }
     var isAICameraOn by remember { mutableStateOf(true) }
 
-    // 📸 PRO MODE मॅन्युअल नियंत्रणे
+    // 📸 PRO MODE मॅन्युअल व्हेरिएबल्स
     var selectedProTab by remember { mutableStateOf("ISO") }
     var manualIso by remember { mutableFloatStateOf(100f) }
     var isIsoAuto by remember { mutableStateOf(true) }
@@ -127,7 +146,6 @@ fun PureCinemaCameraApp() {
     var isFocusAuto by remember { mutableStateOf(true) }
 
     var focusPoint by remember { mutableStateOf<Offset?>(null) }
-    var exposureComp by remember { mutableFloatStateOf(0f) }
     var portraitBlur by remember { mutableFloatStateOf(0.65f) }
     var countdownValue by remember { mutableIntStateOf(0) }
     var isCountingDown by remember { mutableStateOf(false) }
@@ -204,6 +222,7 @@ fun PureCinemaCameraApp() {
         } catch (_: Exception) {}
     }
 
+    // 64MP OIS + 4K व्हिडिओ + Live Filters हार्डवेअर बाइंडिंग
     LaunchedEffect(hasPermissions, lensFacing, selectedMode, selectedVideoResolution, isActionModeOn, activeFilter) {
         if (hasPermissions) {
             val cameraProvider = ProcessCameraProvider.getInstance(context).get()
@@ -228,7 +247,7 @@ fun PureCinemaCameraApp() {
                     val ic = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).build()
                     imageCapture = ic
                     camera = cameraProvider.bindToLifecycle(lifecycleOwner, selector, preview, ic)
-                    if (selectedMode == "NIGHT" || activeFilter.contains("Astro")) {
+                    if (selectedMode == "NIGHT" || activeFilter.contains("Astro") || activeFilter.contains("Night")) {
                         camera?.cameraControl?.setExposureCompensationIndex(2)
                     } else if (selectedMode != "PRO") {
                         val ev = if (activeFilter.contains("Cinematic")) -1 else exposureComp.toInt()
@@ -238,7 +257,7 @@ fun PureCinemaCameraApp() {
 
                 applySafeZoom(currentZoom)
 
-                // 📳 OIS + Cinema Color Grade
+                // 📳 OIS मोटर + सेन्सर टोन
                 try {
                     val camera2Control = Camera2CameraControl.from(camera!!.cameraControl)
                     val builder = CaptureRequestOptions.Builder()
@@ -286,6 +305,13 @@ fun PureCinemaCameraApp() {
                 factory = { previewView },
                 modifier = Modifier
                     .fillMaxSize()
+                    // 🤏 दोन बोटांनी Pinch-to-Zoom
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, _, zoomChange, _ ->
+                            applySafeZoom(currentZoom * zoomChange)
+                        }
+                    }
+                    // Tap-to-Focus
                     .pointerInput(Unit) {
                         detectTapGestures { offset ->
                             focusPoint = offset
@@ -301,7 +327,7 @@ fun PureCinemaCameraApp() {
             )
         }
 
-        // 🎬 2.39:1 Letterbox Bars
+        // 🎬 2.39:1 Cinema Letterbox Bars
         if (activeFilter.contains("Cinematic")) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val h = maxHeight
@@ -322,7 +348,7 @@ fun PureCinemaCameraApp() {
             }
         }
 
-        // Level Line
+        // Horizon Level Line
         if (isLevelOn) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width; val h = size.height; val midY = h / 2
@@ -331,7 +357,7 @@ fun PureCinemaCameraApp() {
             }
         }
 
-        // Tap-to-Focus Indicator + Sun Slider
+        // ☀️ Tap-to-Focus Indicator + Sun Slider
         focusPoint?.let { pos ->
             Row(
                 modifier = Modifier.offset(pos.x.dp - 35.dp, pos.y.dp - 35.dp),
@@ -390,7 +416,7 @@ fun PureCinemaCameraApp() {
         }
 
         // -------------------------------------------------------------
-        // 🔥 वरचा विभाग: स्टेटस बार + सर्व १३ कॉम्बो फिल्टर्सची पट्टी
+        // वरचा विभाग: स्टेटस बार + Normal सह सर्व १५ फिल्टर्सची पट्टी
         // -------------------------------------------------------------
         Column(
             modifier = Modifier
@@ -427,7 +453,7 @@ fun PureCinemaCameraApp() {
                         Box(
                             modifier = Modifier
                                 .background(if (isActionModeOn) Color(0xFFFFCC00) else Color(0x66000000), RoundedCornerShape(12.dp))
- .clickable { isActionModeOn = !isActionModeOn }
+                                .clickable { isActionModeOn = !isActionModeOn }
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Text("🏃 ACTION", color = if (isActionModeOn) Color.Black else Color.White, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
@@ -440,9 +466,12 @@ fun PureCinemaCameraApp() {
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // 🔥 सर्व १३ कॉम्बो फिल्टर्सची पट्टी (Cinematic 9-in-1, Glow, Retro, इ.)
+            // 🚫 Normal Mode सह सर्व १५ फिल्टर्सची पट्टी (नाईट व्हिजनसह)
             val allFiltersList = listOf(
+                "Normal" to "🚫",
                 "Cinematic Look (9-in-1)" to "🎬",
+                "🥽 NVG Green" to "🥽",
+                "🌙 Color Night" to "🌙",
                 "Video Glow" to "✨",
                 "Retro Look" to "🎞️",
                 "Urban Night" to "🌃",
@@ -545,8 +574,7 @@ fun PureCinemaCameraApp() {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("$countdownValue", color = Color(0xFFFFCC00), fontSize = 95.sp)
             }
-        }
-        // -------------------------------------------------------------
+        }// -------------------------------------------------------------
         // तळाचा विभाग: Pro Mode + Arc Zoom Wheel + Modes + Shutter
         // -------------------------------------------------------------
         Column(
@@ -690,42 +718,63 @@ fun PureCinemaCameraApp() {
             Spacer(modifier = Modifier.height(10.dp))
 
             // Shutter Button Row
+            val triggerAction = {
+                if (selectedMode == "VIDEO") {
+                    if (!isRecording) {
+                        videoCapture?.let {
+                            activeRecording = startRealVideoRecording(context, it, activeFilter) { isRecording = false }
+                            isRecording = true
+                        }
+                    } else {
+                        activeRecording?.stop()
+                        activeRecording = null
+                        isRecording = false
+                    }
+                } else {
+                    if (timerDuration > 0) {
+                        scope.launch {
+                            isCountingDown = true
+                            for (i in timerDuration downTo 1) {
+                                countdownValue = i
+                                delay(1000)
+                            }
+                            isCountingDown = false
+                            captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, portraitBlur, isWatermarkOn, selectedAspect)
+                        }
+                    } else {
+                        captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, portraitBlur, isWatermarkOn, selectedAspect)
+                    }
+                }
+            }
+
+            // 📱 फिजिकल Volume Key शी शटर जोडणे
+            LaunchedEffect(Unit) {
+                registerVolumeTrigger { triggerAction() }
+            }
+
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 40.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.size(45.dp))
 
+                // 🔴 QuickTake Shutter Button (Tap to Photo, Long-Press to Video)
                 Box(
                     modifier = Modifier
                         .size(76.dp)
                         .border(4.dp, Color.White, CircleShape)
                         .padding(5.dp)
-                        .background(if (selectedMode == "VIDEO") Color.Red else Color.White, CircleShape)
-                        .clickable {
-                            if (selectedMode == "VIDEO") {
-                                if (!isRecording) {
-                                    videoCapture?.let {
-                                        activeRecording = startRealVideoRecording(context, it, activeFilter) { isRecording = false }
-                                        isRecording = true
-                                    }
-                                } else {
-                                    activeRecording?.stop()
-                                    activeRecording = null
-                                    isRecording = false
-                                }
-                            } else {
-                                if (timerDuration > 0) {
-                                    scope.launch {
-                                        isCountingDown = true
-                                        for (i in timerDuration downTo 1) {
-                                            countdownValue = i
-                                            delay(1000)
+                        .background(if (selectedMode == "VIDEO" || isRecording) Color.Red else Color.White, CircleShape)
+                        .pointerInput(selectedMode) {
+                            detectTapGestures(
+                                onTap = { triggerAction() },
+                                onLongPress = {
+                                    // 🔴 iPhone QuickTake Video: दाबून धरताच थेट व्हिडिओ रेकॉर्डिंग!
+                                    if (!isRecording) {
+                                        videoCapture?.let {
+                                            activeRecording = startRealVideoRecording(context, it, activeFilter) { isRecording = false }
+                                            isRecording = true
                                         }
-                                        isCountingDown = false
-                                        captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, portraitBlur, isWatermarkOn, selectedAspect)
                                     }
-                                } else {
-                                    captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, portraitBlur, isWatermarkOn, selectedAspect)
                                 }
-                            }
+                            )
                         }
                 )
 
@@ -767,6 +816,7 @@ fun startRealVideoRecording(
     ).setContentValues(contentValues).build()
 
     val pending = videoCapture.output.prepareRecording(context, mediaStoreOutput)
+    // 🎙️ बाहेरील वायरलेस/कॉलर माईक सपोर्ट
     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
         pending.withAudioEnabled()
     }
@@ -789,7 +839,7 @@ fun startRealVideoRecording(
 }
 
 // -------------------------------------------------------------
-// 📸 खरा फोटो सेव्हर (MediaEngine द्वारे 9-in-1, Retro, Glow, Pro लागू करून सेव्ह)
+// 📸 खरा फोटो सेव्हर (MediaEngine + Night Vision सह सेव्ह)
 // -------------------------------------------------------------
 fun captureProcessedPhoto(
     context: Context,
@@ -848,13 +898,15 @@ fun captureProcessedPhoto(
 
                         bmp = cropToRealAspectRatio(bmp, aspectRatio)
 
-                        // १. मोडनुसार इफेक्ट
                         if (mode == "PORTRAIT") bmp = applyDSLRBokehEffect(bmp, blurLevel)
                         if (mode == "NIGHT") bmp = processNightPhoto(bmp)
 
-                        // २. 🔥 वर निवडलेला फिल्टर प्रत्यक्ष लागू करणे (9-in-1, Glow, Retro, इ.)
+                        // 🎨 सर्व फिल्टर्स + 🥽 नाईट व्हिजन प्रत्यक्षात लागू करणे
                         bmp = when {
-                            activeFilter.contains("Cinematic") -> applyMasterCinematic9in1(bmp) // ९-इन-१ खरा फॉर्म्युला
+                            activeFilter == "Normal" -> bmp // 🚫 मूळ नैसर्गिक फोटो!
+                            activeFilter.contains("NVG") -> applyMilitaryNightVision(bmp) // 🥽 लष्करी हिरवा नाईट व्हिजन
+                            activeFilter.contains("Color Night") -> applyColorNightVision(bmp) // 🌙 रंगीत नाईट व्हिजन
+                            activeFilter.contains("Cinematic") -> applyMasterCinematic9in1(bmp) // 🎬 ९-इन-१ सिनेमॅटिक
                             activeFilter.contains("Glow") -> applyVideoGlowHalo(bmp)
                             activeFilter.contains("Retro") -> applyVintage70sFilter(bmp)
                             activeFilter.contains("Night") || activeFilter.contains("Cyberpunk") -> applyCyberpunkNeonFilter(bmp)
@@ -881,4 +933,32 @@ fun captureProcessedPhoto(
             }
         }
     )
+}
+
+// 🥽 १. लष्करी हिरवा नाईट व्हिजन (Military Green Phosphor)
+fun applyMilitaryNightVision(src: Bitmap): Bitmap {
+    val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(res)
+    val cm = ColorMatrix(floatArrayOf(
+        0f, 0f, 0f, 0f, 0f,
+        0.35f, 0.70f, 0.15f, 0f, 48f, // तीव्र हिरवा फॉस्फर प्रकाश
+        0f, 0f, 0f, 0f, 0f,
+        0f, 0f, 0f, 1f, 0f
+    ))
+    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
+    return res
+}
+
+// 🌙 २. रंगीत नाईट व्हिजन (Color Night Vision)
+fun applyColorNightVision(src: Bitmap): Bitmap {
+    val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(res)
+    val cm = ColorMatrix(floatArrayOf(
+        1.38f, 0f, 0f, 0f, 42f,
+        0f, 1.38f, 0f, 0f, 42f,
+        0f, 0f, 1.38f, 0f, 42f,
+        0f, 0f, 0f, 1f, 0f
+    ))
+    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
+    return res
 }
