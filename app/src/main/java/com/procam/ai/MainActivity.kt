@@ -574,7 +574,8 @@ fun UltimateCameraEngineApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("$countdownValue", color = Color(0xFFFFCC00), fontSize = 95.sp)
             }
-        }// -------------------------------------------------------------
+        }
+        // -------------------------------------------------------------
         // तळाचा विभाग: Pro Mode + Arc Zoom Wheel + Modes + Shutter
         // -------------------------------------------------------------
         Column(
