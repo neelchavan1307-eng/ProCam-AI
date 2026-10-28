@@ -93,16 +93,18 @@ fun PureCinemaCameraApp() {
     var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
     var isFlashOn by remember { mutableStateOf(false) }
 
+    // 🔍 0.6x ते 10x सेन्सर झूम + Arc Dial
     var currentZoom by remember { mutableFloatStateOf(1f) }
     var isZoomDialVisible by remember { mutableStateOf(false) }
 
-    var selectedMode by remember { mutableStateOf("PRO") }
+    var selectedMode by remember { mutableStateOf("PHOTO") }
+    // 🔥 वर निवडलेला फिल्टर (Cinematic 9-in-1, Glow, Retro, इ.)
     var activeFilter by remember { mutableStateOf("Cinematic Look (9-in-1)") }
 
     var selectedVideoResolution by remember { mutableStateOf("4K") }
     var isActionModeOn by remember { mutableStateOf(false) }
 
-    // Dropdown Settings
+    // Quick Settings Dropdown
     var isQuickMenuOpen by remember { mutableStateOf(false) }
     var selectedAspect by remember { mutableStateOf("4:3") }
     var timerDuration by remember { mutableIntStateOf(0) }
@@ -112,11 +114,11 @@ fun PureCinemaCameraApp() {
     var isHDROn by remember { mutableStateOf(true) }
     var isAICameraOn by remember { mutableStateOf(true) }
 
-    // 📸 PRO MODE मधील मॅन्युअल व्हेरिएबल्स (तक्त्याप्रमाणे)
-    var selectedProTab by remember { mutableStateOf("ISO") } // ISO, S, EV, WB, FOCUS
+    // 📸 PRO MODE मॅन्युअल नियंत्रणे
+    var selectedProTab by remember { mutableStateOf("ISO") }
     var manualIso by remember { mutableFloatStateOf(100f) }
     var isIsoAuto by remember { mutableStateOf(true) }
-    var shutterDenom by remember { mutableFloatStateOf(120f) } // 1/120s
+    var shutterDenom by remember { mutableFloatStateOf(120f) }
     var isShutterAuto by remember { mutableStateOf(true) }
     var evValue by remember { mutableFloatStateOf(0f) }
     var wbKelvin by remember { mutableFloatStateOf(5500f) }
@@ -125,6 +127,7 @@ fun PureCinemaCameraApp() {
     var isFocusAuto by remember { mutableStateOf(true) }
 
     var focusPoint by remember { mutableStateOf<Offset?>(null) }
+    var exposureComp by remember { mutableFloatStateOf(0f) }
     var portraitBlur by remember { mutableFloatStateOf(0.65f) }
     var countdownValue by remember { mutableIntStateOf(0) }
     var isCountingDown by remember { mutableStateOf(false) }
@@ -166,14 +169,12 @@ fun PureCinemaCameraApp() {
         camera?.cameraControl?.setZoomRatio(safe)
     }
 
-    // 🔥 मॅन्युअल Camera2 सेटिंग्ज लागू करणारे फंक्शन
     fun applyProManualSettings() {
         val cam = camera ?: return
         try {
             val camera2Control = Camera2CameraControl.from(cam.cameraControl)
             val builder = CaptureRequestOptions.Builder()
 
-            // १. ISO आणि Shutter Speed
             if (!isIsoAuto && !isShutterAuto) {
                 builder.setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
                 builder.setCaptureRequestOption(CaptureRequest.SENSOR_SENSITIVITY, manualIso.toInt())
@@ -186,14 +187,12 @@ fun PureCinemaCameraApp() {
                 cam.cameraControl.setExposureCompensationIndex(evValue.toInt())
             }
 
-            // २. White Balance (AWB)
             if (!isWbAuto) {
                 builder.setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_OFF)
             } else {
                 builder.setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
             }
 
-            // ३. Focus (AF / MF)
             if (!isFocusAuto) {
                 builder.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
                 builder.setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, manualFocusDistance)
@@ -205,7 +204,6 @@ fun PureCinemaCameraApp() {
         } catch (_: Exception) {}
     }
 
-    // कॅमेरा व व्हिडिओ हार्डवेअर बाइंडिंग
     LaunchedEffect(hasPermissions, lensFacing, selectedMode, selectedVideoResolution, isActionModeOn, activeFilter) {
         if (hasPermissions) {
             val cameraProvider = ProcessCameraProvider.getInstance(context).get()
@@ -230,10 +228,46 @@ fun PureCinemaCameraApp() {
                     val ic = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).build()
                     imageCapture = ic
                     camera = cameraProvider.bindToLifecycle(lifecycleOwner, selector, preview, ic)
+                    if (selectedMode == "NIGHT" || activeFilter.contains("Astro")) {
+                        camera?.cameraControl?.setExposureCompensationIndex(2)
+                    } else if (selectedMode != "PRO") {
+                        val ev = if (activeFilter.contains("Cinematic")) -1 else exposureComp.toInt()
+                        camera?.cameraControl?.setExposureCompensationIndex(ev)
+                    }
                 }
 
                 applySafeZoom(currentZoom)
-                applyProManualSettings()
+
+                // 📳 OIS + Cinema Color Grade
+                try {
+                    val camera2Control = Camera2CameraControl.from(camera!!.cameraControl)
+                    val builder = CaptureRequestOptions.Builder()
+                        .setCaptureRequestOption(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON)
+                        .setCaptureRequestOption(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON)
+
+                    when {
+                        activeFilter.contains("Cinematic") || activeFilter == "Warm" -> {
+                            builder.setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT)
+                        }
+                        activeFilter.contains("Retro") -> {
+                            builder.setCaptureRequestOption(CaptureRequest.CONTROL_EFFECT_MODE, CaptureRequest.CONTROL_EFFECT_MODE_SEPIA)
+                        }
+                        activeFilter == "Noir" -> {
+                            builder.setCaptureRequestOption(CaptureRequest.CONTROL_EFFECT_MODE, CaptureRequest.CONTROL_EFFECT_MODE_MONO)
+                        }
+                        activeFilter.contains("Cyberpunk") || activeFilter == "Cool" -> {
+                            builder.setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT)
+                        }
+                        else -> {
+                            builder.setCaptureRequestOption(CaptureRequest.CONTROL_EFFECT_MODE, CaptureRequest.CONTROL_EFFECT_MODE_OFF)
+                        }
+                    }
+                    camera2Control.setCaptureRequestOptions(builder.build())
+                } catch (_: Exception) {}
+
+                if (selectedMode == "PRO") {
+                    applyProManualSettings()
+                }
             } catch (e: Exception) {
                 Toast.makeText(context, "कॅमेरा त्रुटी: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -267,6 +301,7 @@ fun PureCinemaCameraApp() {
             )
         }
 
+        // 🎬 2.39:1 Letterbox Bars
         if (activeFilter.contains("Cinematic")) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val h = maxHeight
@@ -276,6 +311,7 @@ fun PureCinemaCameraApp() {
             }
         }
 
+        // 3x3 Grid
         if (isGridOn) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width; val h = size.height; val c = Color(0x33FFFFFF)
@@ -286,6 +322,7 @@ fun PureCinemaCameraApp() {
             }
         }
 
+        // Level Line
         if (isLevelOn) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width; val h = size.height; val midY = h / 2
@@ -294,22 +331,41 @@ fun PureCinemaCameraApp() {
             }
         }
 
-        // Tap-to-Focus Indicator
+        // Tap-to-Focus Indicator + Sun Slider
         focusPoint?.let { pos ->
-            Box(
-                modifier = Modifier
-                    .offset(pos.x.dp - 35.dp, pos.y.dp - 35.dp)
-                    .size(70.dp)
-                    .border(1.5.dp, Color(0xFFFFCC00), RoundedCornerShape(4.dp))
-            )
+            Row(
+                modifier = Modifier.offset(pos.x.dp - 35.dp, pos.y.dp - 35.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(70.dp)
+                        .border(1.5.dp, Color(0xFFFFCC00), RoundedCornerShape(4.dp))
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures { _, dragAmount ->
+                                val delta = -dragAmount / 20f
+                                exposureComp = (exposureComp + delta).coerceIn(-4f, 4f)
+                                camera?.cameraControl?.setExposureCompensationIndex(exposureComp.toInt())
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("☀️", fontSize = 16.sp)
+                }
+            }
         }
 
         // Live Histogram
         Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 16.dp, bottom = 180.dp)
-                .size(60.dp, 34.dp)
+                .padding(start = 16.dp, bottom = 135.dp)
+                .size(62.dp, 36.dp)
                 .background(Color(0x88000000), RoundedCornerShape(6.dp))
                 .border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(6.dp)),
             contentAlignment = Alignment.Center
@@ -317,7 +373,25 @@ fun PureCinemaCameraApp() {
             Text("HISTO ∿", color = Color(0xFFFFCC00), fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
         }
 
-        // Top Status Bar
+        // Audio VU Meter
+        if (isRecording) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 12.dp)
+                    .background(Color(0x88000000), RoundedCornerShape(8.dp))
+                    .padding(4.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                listOf(Color.Red, Color.Yellow, Color.Green, Color.Green, Color.Green).forEach { col ->
+                    Box(modifier = Modifier.size(16.dp, 4.dp).background(col, RoundedCornerShape(1.dp)))
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 🔥 वरचा विभाग: स्टेटस बार + सर्व १३ कॉम्बो फिल्टर्सची पट्टी
+        // -------------------------------------------------------------
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -348,11 +422,71 @@ fun PureCinemaCameraApp() {
                     Text(if (isQuickMenuOpen) "▲" else "▼", color = Color.White, fontSize = 12.sp)
                 }
 
-                Text("64MP RAW", color = Color(0xFFFFCC00), fontSize = 11.sp)
+                if (selectedMode == "VIDEO") {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .background(if (isActionModeOn) Color(0xFFFFCC00) else Color(0x66000000), RoundedCornerShape(12.dp))
+ .clickable { isActionModeOn = !isActionModeOn }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text("🏃 ACTION", color = if (isActionModeOn) Color.Black else Color.White, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        }
+                    }
+                } else {
+                    Text("64MP RAW", color = Color(0xFFFFCC00), fontSize = 11.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // 🔥 सर्व १३ कॉम्बो फिल्टर्सची पट्टी (Cinematic 9-in-1, Glow, Retro, इ.)
+            val allFiltersList = listOf(
+                "Cinematic Look (9-in-1)" to "🎬",
+                "Video Glow" to "✨",
+                "Retro Look" to "🎞️",
+                "Urban Night" to "🌃",
+                "4K Quality" to "⚡",
+                "Standard" to "🍎",
+                "Rich Contrast" to "🎭",
+                "Vibrant" to "🌈",
+                "Warm" to "☀️",
+                "Cool" to "❄️",
+                "Noir" to "🖤",
+                "Astro" to "🌌",
+                "Macro" to "🔬"
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                allFiltersList.forEach { (name, icon) ->
+                    val isSel = activeFilter == name
+                    Row(
+                        modifier = Modifier
+                            .background(if (isSel) Color(0xFFFFCC00) else Color(0x88161B26), RoundedCornerShape(16.dp))
+                            .border(1.dp, if (isSel) Color.White else Color(0x44FFFFFF), RoundedCornerShape(16.dp))
+                            .clickable { activeFilter = name }
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(icon, fontSize = 11.sp)
+                        Text(
+                            text = name,
+                            color = if (isSel) Color.Black else Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSel) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
+                        )
+                    }
+                }
             }
         }
 
-        // Dropdown Menu
+        // Quick Dropdown Menu
         AnimatedVisibility(
             visible = isQuickMenuOpen,
             modifier = Modifier.padding(top = 80.dp, start = 16.dp, end = 16.dp).align(Alignment.TopCenter)
@@ -407,103 +541,67 @@ fun PureCinemaCameraApp() {
             }
         }
 
+        if (isCountingDown) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("$countdownValue", color = Color(0xFFFFCC00), fontSize = 95.sp)
+            }
+        }
         // -------------------------------------------------------------
-        // 📸 तळाचा विभाग: अस्सल PRO MODE (Readout Bar + Sliders + Buttons)
+        // तळाचा विभाग: Pro Mode + Arc Zoom Wheel + Modes + Shutter
         // -------------------------------------------------------------
         Column(
             modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // 📸 अस्सल PRO MODE मॅन्युअल पॅनेल (ISO, Shutter, EV, WB, Focus)
             if (selectedMode == "PRO") {
-                // १. Live Readout HUD पट्टी (तुमच्या ASCII डिझाईनप्रमाणे)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
                         .background(Color(0x99111622), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("ISO", color = Color.Gray, fontSize = 10.sp)
-                        Text(if (isIsoAuto) "AUTO" else "${manualIso.toInt()}", color = if (selectedProTab == "ISO") Color(0xFFFFCC00) else Color.White, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Text("ISO", color = Color.Gray, fontSize = 9.sp)
+                        Text(if (isIsoAuto) "AUTO" else "${manualIso.toInt()}", color = if (selectedProTab == "ISO") Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("S", color = Color.Gray, fontSize = 10.sp)
-                        Text(if (isShutterAuto) "AUTO" else "1/${shutterDenom.toInt()}", color = if (selectedProTab == "S") Color(0xFFFFCC00) else Color.White, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Text("S", color = Color.Gray, fontSize = 9.sp)
+                        Text(if (isShutterAuto) "AUTO" else "1/${shutterDenom.toInt()}", color = if (selectedProTab == "S") Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("EV", color = Color.Gray, fontSize = 10.sp)
-                        Text(String.format("%+.1f", evValue), color = if (selectedProTab == "EV") Color(0xFFFFCC00) else Color.White, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Text("EV", color = Color.Gray, fontSize = 9.sp)
+                        Text(String.format("%+.1f", evValue), color = if (selectedProTab == "EV") Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("WB", color = Color.Gray, fontSize = 10.sp)
-                        Text(if (isWbAuto) "AUTO" else "${wbKelvin.toInt()}K", color = if (selectedProTab == "WB") Color(0xFFFFCC00) else Color.White, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Text("WB", color = Color.Gray, fontSize = 9.sp)
+                        Text(if (isWbAuto) "AUTO" else "${wbKelvin.toInt()}K", color = if (selectedProTab == "WB") Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("FOCUS", color = Color.Gray, fontSize = 10.sp)
-                        Text(if (isFocusAuto) "AUTO" else "MF", color = if (selectedProTab == "FOCUS") Color(0xFFFFCC00) else Color.White, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Text("FOCUS", color = Color.Gray, fontSize = 9.sp)
+                        Text(if (isFocusAuto) "AUTO" else "MF", color = if (selectedProTab == "FOCUS") Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     }
                 }
 
-                // २. निवडलेल्या सेटिंगनुसार डायनॅमिक स्लायडर
-                Box(modifier = Modifier.fillMaxWidth().height(45.dp).padding(horizontal = 24.dp)) {
+                Box(modifier = Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 24.dp)) {
                     when (selectedProTab) {
-                        "ISO" -> {
-                            Slider(
-                                value = manualIso,
-                                onValueChange = { manualIso = it; isIsoAuto = false },
-                                valueRange = 50f..3200f,
-                                colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00))
-                            )
-                        }
-                        "S" -> {
-                            Slider(
-                                value = shutterDenom,
-                                onValueChange = { shutterDenom = it; isShutterAuto = false },
-                                valueRange = 4f..4000f,
-                                colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00))
-                            )
-                        }
-                        "EV" -> {
-                            Slider(
-                                value = evValue,
-                                onValueChange = { evValue = it },
-                                valueRange = -2f..2f,
-                                steps = 8,
-                                colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00))
-                            )
-                        }
-                        "WB" -> {
-                            Slider(
-                                value = wbKelvin,
-                                onValueChange = { wbKelvin = it; isWbAuto = false },
-                                valueRange = 2500f..7500f,
-                                colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00))
-                            )
-                        }
-                        "FOCUS" -> {
-                            Slider(
-                                value = manualFocusDistance,
-                                onValueChange = { manualFocusDistance = it; isFocusAuto = false },
-                                valueRange = 0f..10f,
-                                colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00))
-                            )
-                        }
+                        "ISO" -> Slider(value = manualIso, onValueChange = { manualIso = it; isIsoAuto = false }, valueRange = 50f..3200f, colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00)))
+                        "S" -> Slider(value = shutterDenom, onValueChange = { shutterDenom = it; isShutterAuto = false }, valueRange = 4f..4000f, colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00)))
+                        "EV" -> Slider(value = evValue, onValueChange = { evValue = it }, valueRange = -2f..2f, steps = 8, colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00)))
+                        "WB" -> Slider(value = wbKelvin, onValueChange = { wbKelvin = it; isWbAuto = false }, valueRange = 2500f..7500f, colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00)))
+                        "FOCUS" -> Slider(value = manualFocusDistance, onValueChange = { manualFocusDistance = it; isFocusAuto = false }, valueRange = 0f..10f, colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00)))
                     }
                 }
 
-                // ३. [ISO] [S] [EV] [WB] [FOCUS] ची ५ निवड बटणे
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     listOf("ISO", "S", "EV", "WB", "FOCUS").forEach { tab ->
                         val isSel = selectedProTab == tab
                         Button(
                             onClick = { selectedProTab = tab },
                             colors = ButtonDefaults.buttonColors(containerColor = if (isSel) Color(0xFFFFCC00) else Color(0xFF1E2433)),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Text(tab, color = if (isSel) Color.Black else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
@@ -512,35 +610,87 @@ fun PureCinemaCameraApp() {
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            // Portrait Mode Bokeh Slider
+            if (selectedMode == "PORTRAIT") {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("👤 DSLR Bokeh: ${(portraitBlur * 100).toInt()}%", color = Color(0xFFFFCC00), fontSize = 11.sp)
+                    Slider(value = portraitBlur, onValueChange = { portraitBlur = it }, valueRange = 0.2f..1.0f, colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00)))
+                }
+            }
 
-            // 🔻 मुख्य मोड्स (Clean Bottom Mode Strip)
-            val cleanModes = listOf("PHOTO", "VIDEO", "PORTRAIT", "NIGHT", "PRO")
+            // 🔍 Arc Zoom Wheel (०.६x ते १०x)
+            if (isZoomDialVisible) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 6.dp)) {
+                    Text(text = String.format("%.1fx", currentZoom), color = Color(0xFFFFCC00), fontSize = 18.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f)
+                            .height(50.dp)
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    val delta = dragAmount.x / 40f
+                                    applySafeZoom((currentZoom + delta).coerceIn(0.6f, 10f))
+                                }
+                            }
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val w = size.width; val h = size.height
+                            drawArc(Color(0x66FFFFFF), 180f, 180f, false, Offset(0f, -h), Size(w, h * 2), style = Stroke(2.dp.toPx()))
+                            listOf(0.6f, 1f, 2f, 4f, 6f, 8f, 10f).forEach { mark ->
+                                val x = w * ((mark - 0.6f) / (10f - 0.6f))
+                                val isNear = abs(currentZoom - mark) < 0.3f
+                                drawLine(if (isNear) Color(0xFFFFCC00) else Color.White, Offset(x, h * 0.4f), Offset(x, h * 0.85f), if (isNear) 3.dp.toPx() else 1.5.dp.toPx())
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Quick Lens Switcher Pills: .6 • 1 • 2 • 5 • DIAL
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
+                modifier = Modifier.background(Color(0x66000000), RoundedCornerShape(24.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                listOf(0.6f to ".6", 1f to "1", 2f to "2", 5f to "5", 10f to "10").forEach { (z, label) ->
+                    val isSel = abs(currentZoom - z) < 0.15f
+                    Box(
+                        modifier = Modifier.size(32.dp).background(if (isSel) Color(0x44FFFFFF) else Color.Transparent, CircleShape).clickable { applySafeZoom(z); isZoomDialVisible = false },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(label, color = if (isSel) Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = if (isSel) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal)
+                    }
+                }
+                Box(
+                    modifier = Modifier.background(if (isZoomDialVisible) Color(0xFFFFCC00) else Color(0x33FFFFFF), RoundedCornerShape(12.dp)).clickable { isZoomDialVisible = !isZoomDialVisible }.padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text("DIAL", color = if (isZoomDialVisible) Color.Black else Color.White, fontSize = 10.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 🔻 स्वच्छ मुख्य मोड्स (Clean Bottom Mode Strip)
+            val cleanModes = listOf("PHOTO", "VIDEO", "PORTRAIT", "NIGHT", "PRO")
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 cleanModes.forEach { mode ->
                     val isSel = selectedMode == mode
                     Text(
                         text = mode,
                         color = if (isSel) Color(0xFFFFCC00) else Color.White,
-                        fontSize = if (isSel) 15.sp else 13.sp,
+                        fontSize = if (isSel) 14.sp else 12.sp,
                         fontWeight = if (isSel) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
                         modifier = Modifier.clickable { selectedMode = mode }.padding(vertical = 4.dp, horizontal = 6.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Shutter Button Row
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 40.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 40.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.size(45.dp))
 
                 Box(
@@ -562,7 +712,19 @@ fun PureCinemaCameraApp() {
                                     isRecording = false
                                 }
                             } else {
-                                captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, portraitBlur, isWatermarkOn, selectedAspect)
+                                if (timerDuration > 0) {
+                                    scope.launch {
+                                        isCountingDown = true
+                                        for (i in timerDuration downTo 1) {
+                                            countdownValue = i
+                                            delay(1000)
+                                        }
+                                        isCountingDown = false
+                                        captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, portraitBlur, isWatermarkOn, selectedAspect)
+                                    }
+                                } else {
+                                    captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, portraitBlur, isWatermarkOn, selectedAspect)
+                                }
                             }
                         }
                 )
@@ -627,7 +789,7 @@ fun startRealVideoRecording(
 }
 
 // -------------------------------------------------------------
-// 📸 खरा फोटो सेव्हर (MediaEngine द्वारे सेव्ह)
+// 📸 खरा फोटो सेव्हर (MediaEngine द्वारे 9-in-1, Retro, Glow, Pro लागू करून सेव्ह)
 // -------------------------------------------------------------
 fun captureProcessedPhoto(
     context: Context,
@@ -686,11 +848,13 @@ fun captureProcessedPhoto(
 
                         bmp = cropToRealAspectRatio(bmp, aspectRatio)
 
+                        // १. मोडनुसार इफेक्ट
                         if (mode == "PORTRAIT") bmp = applyDSLRBokehEffect(bmp, blurLevel)
                         if (mode == "NIGHT") bmp = processNightPhoto(bmp)
 
+                        // २. 🔥 वर निवडलेला फिल्टर प्रत्यक्ष लागू करणे (9-in-1, Glow, Retro, इ.)
                         bmp = when {
-                            activeFilter.contains("Cinematic") -> applyMasterCinematic9in1(bmp)
+                            activeFilter.contains("Cinematic") -> applyMasterCinematic9in1(bmp) // ९-इन-१ खरा फॉर्म्युला
                             activeFilter.contains("Glow") -> applyVideoGlowHalo(bmp)
                             activeFilter.contains("Retro") -> applyVintage70sFilter(bmp)
                             activeFilter.contains("Night") || activeFilter.contains("Cyberpunk") -> applyCyberpunkNeonFilter(bmp)
@@ -699,6 +863,7 @@ fun captureProcessedPhoto(
                             activeFilter == "Noir" -> applyNoirFilter(bmp)
                             activeFilter == "Astro" -> applyAstroPhoto(bmp)
                             activeFilter == "Macro" -> applyMacroSharpen(bmp)
+                            activeFilter in listOf("Rich Contrast", "Vibrant", "Warm", "Cool") -> applyPhotographicStyle(bmp, activeFilter)
                             else -> bmp
                         }
 
