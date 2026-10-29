@@ -346,20 +346,43 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             }
         }
 
+        // 🎯 Tap-to-Focus टच थर
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        focusPoint = offset
+                        val factory = previewView.meteringPointFactory
+                        val point = factory.createPoint(offset.x, offset.y)
+                        camera?.cameraControl?.startFocusAndMetering(FocusMeteringAction.Builder(point).build())
+                        scope.launch {
+                            delay(4000)
+                            focusPoint = null
+                        }
+                    }
+                }
+        )
+
+        // ☀️ आयफोन सिग्नेचर Tap-to-Focus Indicator + Sun Slider (बोटाखाली अचूक जागेवर)
+        val density = androidx.compose.ui.platform.LocalDensity.current
         focusPoint?.let { pos ->
+            val xDp = with(density) { pos.x.toDp() } - 35.dp
+            val yDp = with(density) { pos.y.toDp() } - 35.dp
             Row(
-                modifier = Modifier.offset(pos.x.dp - 35.dp, pos.y.dp - 35.dp),
+                modifier = Modifier.offset(xDp, yDp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
                         .size(70.dp)
-                        .border(1.5.dp, Color(0xFFFFCC00), RoundedCornerShape(4.dp))
+                        .border(2.dp, Color(0xFFFFCC00), RoundedCornerShape(6.dp))
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(36.dp)
+                        .background(Color(0x55000000), CircleShape)
                         .pointerInput(Unit) {
                             detectVerticalDragGestures { _, dragAmount ->
                                 val delta = -dragAmount / 20f
@@ -370,7 +393,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("☀️", fontSize = 16.sp)
+                    Text("☀️", fontSize = 18.sp)
                 }
             }
         }
