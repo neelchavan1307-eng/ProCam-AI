@@ -488,16 +488,3 @@ fun addBrandWatermark(src: Bitmap): Bitmap {
     canvas.drawText("ProCam AI • ${SimpleDateFormat("dd MMM yyyy", Locale.US).format(java.util.Date())}", 20f, src.height - 30f, paint)
     return res
 }
-fun saveFinalProcessedBitmap(context: Context, bmp: Bitmap, prefix: String) {
-    try {
-        val name = "${prefix}_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(java.util.Date())}.jpg"
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, name)
-            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) { put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/ProCam AI") }
-        }
-        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-        uri?.let { context.contentResolver.openOutputStream(it)?.use { out -> bmp.compress(Bitmap.CompressFormat.JPEG, 98, out) } }
-        (context as? android.app.Activity)?.runOnUiThread { Toast.makeText(context, "📸 $prefix सेव्ह झाला!", Toast.LENGTH_SHORT).show() }
-    } catch (e: Exception) { (context as? android.app.Activity)?.runOnUiThread { Toast.makeText(context, "Save Error: ${e.message}", Toast.LENGTH_SHORT).show() } }
-}
