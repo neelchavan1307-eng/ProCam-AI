@@ -12,7 +12,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 object AiRestoreEngine {
@@ -23,7 +22,6 @@ object AiRestoreEngine {
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    // ⚡ पुसट/१०x फोटोला Remini/ChatGPT सारखे 4K Face Restore करणे
     fun restorePhotoWithGenerativeAI(
         context: Context,
         inputBitmap: Bitmap,
@@ -32,9 +30,10 @@ object AiRestoreEngine {
     ) {
         val mainHandler = Handler(Looper.getMainLooper())
 
-        if (apiToken.isBlank() || !apiToken.startsWith("r8_")) {
+        val token = apiToken.trim()
+        if (token.isBlank() || !token.startsWith("r8_")) {
             mainHandler.post {
-                Toast.makeText(context, "कृपया योग्य Replicate API Token टाका!", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "कृपया योग्य Replicate API Token (r8_...) टाका!", Toast.LENGTH_LONG).show()
                 onResult(null)
             }
             return
@@ -42,10 +41,10 @@ object AiRestoreEngine {
 
         Thread {
             try {
-                // १. फोटोला सुरक्षित बेस६४ (Data URI) मध्ये रूपांतरित करणे
+                // १. फोटोचे रिझोल्यूशन सेफ ठेवून Base64 Data URI बनवणे
                 val stream = ByteArrayOutputStream()
-                // रिझोल्यूशन मॅक्सिमम १०२४px ठेवून सुपरफास्ट अपलोड
-                val scale = 1024f / maxOf(inputBitmap.width, inputBitmap.height)
+                val maxDim = maxOf(inputBitmap.width, inputBitmap.height)
+                val scale = if (maxDim > 1024) 1024f / maxDim else 1f
                 val resized = if (scale < 1f) {
                     Bitmap.createScaledBitmap(inputBitmap, (inputBitmap.width * scale).toInt(), (inputBitmap.height * scale).toInt(), true)
                 } else inputBitmap
@@ -54,34 +53,41 @@ object AiRestoreEngine {
                 val base64Image = Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
                 val dataUri = "data:image/jpeg;base64,$base64Image"
 
-                // २. जगातील सर्वोत्तम Face Restoration AI मॉडेल (CodeFormer) ची विनंती तयार करणे
+                // २. अधिकृत CodeFormer + Real-ESRGAN (चेहरा + संपूर्ण बॅकग्राऊंड दोन्हीसाठी)
                 val jsonBody = JSONObject().apply {
-                    put("version", "7de2ea26c616d5bfde245ad0d11cf0c5c3f42b2ce66bef47e16a77779a73e19a")
                     put("input", JSONObject().apply {
                         put("image", dataUri)
-                        put("codeformer_fidelity", 0.7) // चेहरा मूळ व्यक्तीसारखाच ठेवणे
-                        put("upscale", 2)               // २ पट सुपर रिझोल्यूशन
-                        put("face_upsample", true)      // डोळे, पापण्या, केस आणि त्वचा हुबेहूब तयार करणे
+                        put("upscale", 2)
+                        put("face_upsample", true)
+                        put("background_enhance", true)
+                        put("codeformer_fidelity", 0.7)
                     })
                 }
 
                 val request = Request.Builder()
-                    .url("https://api.replicate.com/v1/predictions")
-                    .addHeader("Authorization", "Bearer $apiToken")
+                    .url("https://api.replicate.com/v1/models/sczhou/codeformer/predictions")
+                    .addHeader("Authorization", "Bearer $token")
                     .addHeader("Content-Type", "application/json")
+                    .addHeader("Prefer", "wait")
                     .post(jsonBody.toString().toRequestBody("application/json".toMediaType()))
                     .build()
 
                 mainHandler.post {
-                    Toast.makeText(context, "⚡ AI जादू सुरू झाली... ३ ते ५ सेकंद थांबा", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "⚡ AI जादू सुरू झाली... काही सेकंद थांबा", Toast.LENGTH_SHORT).show()
                 }
 
                 val response = client.newCall(request).execute()
                 val responseStr = response.body?.string() ?: ""
 
                 if (!response.isSuccessful) {
+                    val errorDetail = try {
+                        val errObj = JSONObject(responseStr)
+                        errObj.optString("detail", errObj.optString("error", "त्रुटी: ${response.code}"))
+                    } catch (_: Exception) {
+                        "त्रुटी: ${response.code}"
+                    }
                     mainHandler.post {
-                        Toast.makeText(context, "AI सर्व्हर त्रुटी: ${response.code}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "AI सर्व्हर त्रुटी: $errorDetail", Toast.LENGTH_LONG).show()
                         onResult(null)
                     }
                     return@Thread
@@ -89,33 +95,40 @@ object AiRestoreEngine {
 
                 val predictionJson = JSONObject(responseStr)
                 var status = predictionJson.optString("status")
-                val pollUrl = predictionJson.getJSONObject("urls").getString("get")
-
-                // ३. AI फोटो तयार करेपर्यंत वाट पाहणे (Polling 1-2 सेकंदात)
                 var outputImageUrl: String? = null
-                var attempts = 0
-                while (status != "succeeded" && status != "failed" && attempts < 25) {
-                    Thread.sleep(1500)
-                    attempts++
 
-                    val pollRequest = Request.Builder()
-                        .url(pollUrl)
-                        .addHeader("Authorization", "Bearer $apiToken")
-                        .get()
-                        .build()
+                if (status == "succeeded") {
+                    outputImageUrl = predictionJson.optString("output")
+                } else {
+                    val urlsObj = predictionJson.optJSONObject("urls")
+                    val pollUrl = urlsObj?.optString("get")
 
-                    val pollResponse = client.newCall(pollRequest).execute()
-                    val pollJson = JSONObject(pollResponse.body?.string() ?: "{}")
-                    status = pollJson.optString("status")
+                    if (pollUrl != null) {
+                        var attempts = 0
+                        while (status != "succeeded" && status != "failed" && attempts < 30) {
+                            Thread.sleep(1500)
+                            attempts++
 
-                    if (status == "succeeded") {
-                        outputImageUrl = pollJson.optString("output")
-                        break
+                            val pollRequest = Request.Builder()
+                                .url(pollUrl)
+                                .addHeader("Authorization", "Bearer $token")
+                                .get()
+                                .build()
+
+                            val pollResponse = client.newCall(pollRequest).execute()
+                            val pollJson = JSONObject(pollResponse.body?.string() ?: "{}")
+                            status = pollJson.optString("status")
+
+                            if (status == "succeeded") {
+                                outputImageUrl = pollJson.optString("output")
+                                break
+                            }
+                        }
                     }
                 }
 
-                // ४. AI ने तयार केलेला चकचकीत HD फोटो डाऊनलोड करणे
-                if (outputImageUrl != null && outputImageUrl.isNotBlank()) {
+                // ३. तयार झालेला 4K फोटो थेट डाऊनलोड करून गॅलरीत देणे
+                if (!outputImageUrl.isNullOrBlank()) {
                     val downloadReq = Request.Builder().url(outputImageUrl).get().build()
                     val downloadResp = client.newCall(downloadReq).execute()
                     val imageBytes = downloadResp.body?.bytes()
