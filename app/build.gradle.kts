@@ -11,8 +11,8 @@ android {
         applicationId = "com.procam.ai"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "1.4"
     }
 
     buildTypes {
@@ -42,7 +42,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.activity:activity-compose:1.8.2")
 
-    // CameraX (कॅमेरा आणि 4K OIS रेकॉर्डिंग)
+    // CameraX (कॅमेरा आणि 4K OIS)
     val cameraxVersion = "1.3.1"
     implementation("androidx.camera:camera-core:$cameraxVersion")
     implementation("androidx.camera:camera-camera2:$cameraxVersion")
@@ -50,11 +50,14 @@ dependencies {
     implementation("androidx.camera:camera-view:$cameraxVersion")
     implementation("androidx.camera:camera-video:$cameraxVersion")
 
-    // Google Media3 Transformer (खरा व्हिडिओ प्ले करणे व फिल्टर्ससह MP4 एक्सपोर्ट करणे)
+    // Google Media3 Transformer (व्हिडिओ इंजिन)
     val media3Version = "1.3.1"
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
     implementation("androidx.media3:media3-transformer:$media3Version")
     implementation("androidx.media3:media3-effect:$media3Version")
     implementation("androidx.media3:media3-common:$media3Version")
+
+    // ⚡ AI Cloud API साठी हाय-स्पीड नेटवर्क लायब्ररी
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
