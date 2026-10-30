@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.hardware.camera2.CaptureRequest
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
