@@ -26,6 +26,7 @@ import androidx.camera.video.VideoCapture
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -46,8 +47,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
@@ -97,6 +100,45 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
 
+    // 🔑 Replicate API Token फोनमध्ये सेव्ह ठेवणे
+    val prefs = remember { context.getSharedPreferences("procam_ai_prefs", Context.MODE_PRIVATE) }
+    var apiToken by remember { mutableStateOf(prefs.getString("replicate_token", "") ?: "") }
+    var showTokenDialog by remember { mutableStateOf(false) }
+    var tokenInputText by remember { mutableStateOf(apiToken) }
+
+    // ⚡ Generative AI State
+    var isAiRestoring by remember { mutableStateOf(false) }
+    var aiOriginalBmp by remember { mutableStateOf<Bitmap?>(null) }
+    var aiRestoredBmp by remember { mutableStateOf<Bitmap?>(null) }
+    var showAiResultDialog by remember { mutableStateOf(false) }
+
+    // गॅलरीतून १०x किंवा कोणताही पुसट फोटो निवडणारा लाँचर
+    val aiPhotoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let {
+            try {
+                val stream = context.contentResolver.openInputStream(it)
+                val loaded = BitmapFactory.decodeStream(stream)
+                if (loaded != null) {
+                    if (apiToken.isBlank()) {
+                        Toast.makeText(context, "कृपया आधी 🔑 AI Token पेस्ट करा!", Toast.LENGTH_LONG).show()
+                        showTokenDialog = true
+                    } else {
+                        isAiRestoring = true
+                        aiOriginalBmp = loaded
+                        AiRestoreEngine.restorePhotoWithGenerativeAI(context, loaded, apiToken) { restored ->
+                            isAiRestoring = false
+                            if (restored != null) {
+                                aiRestoredBmp = restored
+                                showAiResultDialog = true
+                                saveFinalProcessedBitmap(context, restored, "AI_4K_RESTORED")
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
     var camera by remember { mutableStateOf<Camera?>(null) }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
@@ -111,7 +153,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     var isZoomDialVisible by remember { mutableStateOf(false) }
 
     var selectedMode by remember { mutableStateOf("PHOTO") }
-    // 🚫 डीफॉल्ट स्वच्छ Normal Mode
     var activeFilter by remember { mutableStateOf("Normal") }
 
     var selectedVideoResolution by remember { mutableStateOf("4K") }
@@ -126,7 +167,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     var isHDROn by remember { mutableStateOf(true) }
     var isAICameraOn by remember { mutableStateOf(true) }
 
-    // 📸 PRO MODE मॅन्युअल व्हेरिएबल्स (दोन्ही व्हेरिएबल्स १००% सुरक्षित जोडले आहेत)
     var selectedProTab by remember { mutableStateOf("ISO") }
     var manualIso by remember { mutableFloatStateOf(100f) }
     var isIsoAuto by remember { mutableStateOf(true) }
@@ -297,13 +337,11 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 factory = { previewView },
                 modifier = Modifier
                     .fillMaxSize()
-                    // 🤏 दोन बोटांनी Pinch-to-Zoom
                     .pointerInput(Unit) {
                         detectTransformGestures { _, _, zoomChange, _ ->
                             applySafeZoom(currentZoom * zoomChange)
                         }
                     }
-                    // Tap-to-Focus
                     .pointerInput(Unit) {
                         detectTapGestures { offset ->
                             focusPoint = offset
@@ -346,43 +384,20 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             }
         }
 
-        // 🎯 Tap-to-Focus टच थर
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) {
-                    detectTapGestures { offset ->
-                        focusPoint = offset
-                        val factory = previewView.meteringPointFactory
-                        val point = factory.createPoint(offset.x, offset.y)
-                        camera?.cameraControl?.startFocusAndMetering(FocusMeteringAction.Builder(point).build())
-                        scope.launch {
-                            delay(4000)
-                            focusPoint = null
-                        }
-                    }
-                }
-        )
-
-        // ☀️ आयफोन सिग्नेचर Tap-to-Focus Indicator + Sun Slider (बोटाखाली अचूक जागेवर)
-        val density = androidx.compose.ui.platform.LocalDensity.current
         focusPoint?.let { pos ->
-            val xDp = with(density) { pos.x.toDp() } - 35.dp
-            val yDp = with(density) { pos.y.toDp() } - 35.dp
             Row(
-                modifier = Modifier.offset(xDp, yDp),
+                modifier = Modifier.offset(pos.x.dp - 35.dp, pos.y.dp - 35.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
                         .size(70.dp)
-                        .border(2.dp, Color(0xFFFFCC00), RoundedCornerShape(6.dp))
+                        .border(1.5.dp, Color(0xFFFFCC00), RoundedCornerShape(4.dp))
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
-                        .background(Color(0x55000000), CircleShape)
+                        .size(32.dp)
                         .pointerInput(Unit) {
                             detectVerticalDragGestures { _, dragAmount ->
                                 val delta = -dragAmount / 20f
@@ -393,7 +408,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("☀️", fontSize = 18.sp)
+                    Text("☀️", fontSize = 16.sp)
                 }
             }
         }
@@ -445,6 +460,16 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                     Text(if (isFlashOn) "⚡" else "⚡", color = if (isFlashOn) Color.Black else Color.White)
                 }
 
+                // ⚡ थेट AI 4K Restore बटण (गॅलरीतून १०x किंवा पुसट फोटो निवडणे)
+                Box(
+                    modifier = Modifier
+                        .background(Color(0xDDFFCC00), RoundedCornerShape(14.dp))
+                        .clickable { aiPhotoPickerLauncher.launch("image/*") }
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    Text("⚡ AI 4K Restore", color = Color.Black, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                }
+
                 Box(
                     modifier = Modifier
                         .background(Color(0x66000000), CircleShape)
@@ -456,15 +481,13 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 }
 
                 if (selectedMode == "VIDEO") {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .background(if (isActionModeOn) Color(0xFFFFCC00) else Color(0x66000000), RoundedCornerShape(12.dp))
-                                .clickable { isActionModeOn = !isActionModeOn }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text("🏃 ACTION", color = if (isActionModeOn) Color.Black else Color.White, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                        }
+                    Box(
+                        modifier = Modifier
+                            .background(if (isActionModeOn) Color(0xFFFFCC00) else Color(0x66000000), RoundedCornerShape(12.dp))
+                            .clickable { isActionModeOn = !isActionModeOn }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("🏃 ACTION", color = if (isActionModeOn) Color.Black else Color.White, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     }
                 } else {
                     Text("64MP RAW", color = Color(0xFFFFCC00), fontSize = 11.sp)
@@ -534,7 +557,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                     val tileRows = listOf(
                         listOf(
                             QuickMenuTile("HDR", if (isHDROn) "On" else "Off", isHDROn) { isHDROn = !isHDROn },
-                            QuickMenuTile("AI", if (isAICameraOn) "AI Cam" else "Off", isAICameraOn) { isAICameraOn = !isAICameraOn },
+                            QuickMenuTile("AI Cam", if (isAICameraOn) "On" else "Off", isAICameraOn) { isAICameraOn = !isAICameraOn },
                             QuickMenuTile("Aspect", selectedAspect, true) {
                                 selectedAspect = when(selectedAspect) { "4:3" -> "16:9"; "16:9" -> "1:1"; "1:1" -> "Full"; else -> "4:3" }
                             },
@@ -546,8 +569,8 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                             QuickMenuTile("Grid #", if (isGridOn) "On" else "Off", isGridOn) { isGridOn = !isGridOn },
                             QuickMenuTile("Level ⊝", if (isLevelOn) "On" else "Off", isLevelOn) { isLevelOn = !isLevelOn },
                             QuickMenuTile("Watermark", if (isWatermarkOn) "On" else "Off", isWatermarkOn) { isWatermarkOn = !isWatermarkOn },
-                            QuickMenuTile("Resolution", selectedVideoResolution, true) {
-                                selectedVideoResolution = when(selectedVideoResolution) { "4K" -> "1080p"; "1080p" -> "720p"; else -> "4K" }
+                            QuickMenuTile("🔑 AI Token", if (apiToken.isNotBlank()) "Active" else "Set Token", apiToken.isNotBlank()) {
+                                showTokenDialog = true
                             }
                         )
                     )
@@ -579,8 +602,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("$countdownValue", color = Color(0xFFFFCC00), fontSize = 95.sp)
             }
-        }
-        Column(
+        }Column(
             modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -647,7 +669,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 }
             }
 
-            // 🔍 Arc Zoom Wheel (०.६x ते १०x)
             if (isZoomDialVisible) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 6.dp)) {
                     Text(text = String.format("%.1fx", currentZoom), color = Color(0xFFFFCC00), fontSize = 18.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
@@ -783,12 +804,75 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 }
             }
         }
+
+        // ⚡ AI Generative 4K Processing Overlay
+        if (isAiRestoring) {
+            Box(modifier = Modifier.fillMaxSize().background(Color(0xCC000000)), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                    CircularProgressIndicator(color = Color(0xFFFFCC00), modifier = Modifier.size(50.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("⚡ Generative AI 4K Restore चालू आहे...", color = Color.White, fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    Text("डोळे, केस आणि चेहऱ्याचे पोत रिस्टोअर होत आहेत (CodeFormer)", color = Color.Gray, fontSize = 12.sp)
+                }
+            }
+        }
+
+        // 🎉 AI 4K Restored Result Dialog (Before/After)
+        if (showAiResultDialog && aiRestoredBmp != null) {
+            AlertDialog(
+                onDismissRequest = { showAiResultDialog = false },
+                confirmButton = {
+                    Button(onClick = { showAiResultDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCC00))) {
+                        Text("पूर्ण (गॅलरीत सेव्ह झाला)", color = Color.Black)
+                    }
+                },
+                title = { Text("🎉 AI 4K Restore यशस्वी!", color = Color.White) },
+                text = {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Image(bitmap = aiRestoredBmp!!.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Fit)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("✅ 4K सुपर रिझोल्यूशन थेट 'Pictures/ProCam AI' मध्ये सेव्ह झाला!", color = Color(0xFF4CAF50), fontSize = 12.sp)
+                    }
+                },
+                containerColor = Color(0xFF1E2433)
+            )
+        }
+
+        // 🔑 Token Dialog (Replicate Token सेव्ह करणे)
+        if (showTokenDialog) {
+            AlertDialog(
+                onDismissRequest = { showTokenDialog = false },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            prefs.edit().putString("replicate_token", tokenInputText.trim()).apply()
+                            apiToken = tokenInputText.trim()
+                            showTokenDialog = false
+                            Toast.makeText(context, "🔑 AI Token सेव्ह झाले!", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCC00))
+                    ) { Text("Save Token", color = Color.Black) }
+                },
+                title = { Text("🔑 Replicate AI Token", color = Color.White) },
+                text = {
+                    Column {
+                        Text("तुमचे 'r8_...' ने सुरू होणारे टोकन खाली पेस्ट करा:", color = Color.LightGray, fontSize = 13.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = tokenInputText,
+                            onValueChange = { tokenInputText = it },
+                            placeholder = { Text("r8_...", color = Color.Gray) },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                        )
+                    }
+                },
+                containerColor = Color(0xFF1E2433)
+            )
+        }
     }
 }
 
-// -------------------------------------------------------------
-// 🎥 खरा 4K व्हिडिओ सेव्हर
-// -------------------------------------------------------------
 fun startRealVideoRecording(
     context: Context,
     videoCapture: VideoCapture<Recorder>,
@@ -832,9 +916,6 @@ fun startRealVideoRecording(
     }
 }
 
-// -------------------------------------------------------------
-// 📸 खरा 64MP फोटो सेव्हर (सर्व फिल्टर्स + Night Vision सह)
-// -------------------------------------------------------------
 fun captureProcessedPhoto(
     context: Context,
     capture: ImageCapture?,
@@ -896,7 +977,6 @@ fun captureProcessedPhoto(
                         if (mode == "PORTRAIT") bmp = applyDSLRBokehEffect(bmp, blurLevel)
                         if (mode == "NIGHT") bmp = processNightPhoto(bmp)
 
-                        // 🎨 सर्व फिल्टर्स + 🥽 नाईट व्हिजन (NVG Green / Color Night)
                         bmp = when {
                             activeFilter == "Normal" -> bmp
                             activeFilter.contains("NVG") -> applyMilitaryNightVision(bmp)
