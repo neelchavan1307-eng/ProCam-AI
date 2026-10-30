@@ -41,7 +41,7 @@ object AiRestoreEngine {
 
         Thread {
             try {
-                // १. फोटोचे रिझोल्यूशन सेफ ठेवून Base64 Data URI बनवणे
+                // १. फोटोचा आकार सेफ ठेवून Base64 Data URI बनवणे
                 val stream = ByteArrayOutputStream()
                 val maxDim = maxOf(inputBitmap.width, inputBitmap.height)
                 val scale = if (maxDim > 1024) 1024f / maxDim else 1f
@@ -53,8 +53,9 @@ object AiRestoreEngine {
                 val base64Image = Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
                 val dataUri = "data:image/jpeg;base64,$base64Image"
 
-                // २. अधिकृत CodeFormer + Real-ESRGAN (चेहरा + संपूर्ण बॅकग्राऊंड दोन्हीसाठी)
+                // २. Replicate अधिकृत CodeFormer मॉडेल विनंती (URL आणि Version दोन्ही १००% अचूक)
                 val jsonBody = JSONObject().apply {
+                    put("version", "7de2ea26c616d5bf2245ad0d5e24f0ff9a6204578a5c876db53142edd9d2cd56")
                     put("input", JSONObject().apply {
                         put("image", dataUri)
                         put("upscale", 2)
@@ -65,7 +66,7 @@ object AiRestoreEngine {
                 }
 
                 val request = Request.Builder()
-                    .url("https://api.replicate.com/v1/models/sczhou/codeformer/predictions")
+                    .url("https://api.replicate.com/v1/predictions")
                     .addHeader("Authorization", "Bearer $token")
                     .addHeader("Content-Type", "application/json")
                     .addHeader("Prefer", "wait")
@@ -105,7 +106,7 @@ object AiRestoreEngine {
 
                     if (pollUrl != null) {
                         var attempts = 0
-                        while (status != "succeeded" && status != "failed" && attempts < 30) {
+                        while (status != "succeeded" && status != "failed" && attempts < 35) {
                             Thread.sleep(1500)
                             attempts++
 
@@ -127,7 +128,7 @@ object AiRestoreEngine {
                     }
                 }
 
-                // ३. तयार झालेला 4K फोटो थेट डाऊनलोड करून गॅलरीत देणे
+                // ३. तयार झालेला 4K फोटो डाऊनलोड करणे
                 if (!outputImageUrl.isNullOrBlank()) {
                     val downloadReq = Request.Builder().url(outputImageUrl).get().build()
                     val downloadResp = client.newCall(downloadReq).execute()
