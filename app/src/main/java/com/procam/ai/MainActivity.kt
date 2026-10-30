@@ -602,7 +602,8 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("$countdownValue", color = Color(0xFFFFCC00), fontSize = 95.sp)
             }
-        }Column(
+        }
+        Column(
             modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
