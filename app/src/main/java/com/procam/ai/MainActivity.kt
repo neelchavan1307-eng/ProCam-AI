@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -100,20 +101,18 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
 
-    // 🔑 Replicate API Token फोनमध्ये सेव्ह ठेवणे
     val prefs = remember { context.getSharedPreferences("procam_ai_prefs", Context.MODE_PRIVATE) }
     var apiToken by remember { mutableStateOf(prefs.getString("replicate_token", "") ?: "") }
     var showTokenDialog by remember { mutableStateOf(false) }
     var tokenInputText by remember { mutableStateOf(apiToken) }
 
-    // ⚡ Generative AI State
     var isAiRestoring by remember { mutableStateOf(false) }
     var aiOriginalBmp by remember { mutableStateOf<Bitmap?>(null) }
     var aiRestoredBmp by remember { mutableStateOf<Bitmap?>(null) }
     var showAiResultDialog by remember { mutableStateOf(false) }
 
-    // गॅलरीतून १०x किंवा कोणताही पुसट फोटो निवडणारा लाँचर
     val aiPhotoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri?.let {
             try {
@@ -181,7 +180,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     var isFocusAuto by remember { mutableStateOf(true) }
 
     var focusPoint by remember { mutableStateOf<Offset?>(null) }
-    var portraitBlur by remember { mutableFloatStateOf(0.65f) }
+    var portraitBlur by remember { mutableFloatStateOf(0.70f) }
     var countdownValue by remember { mutableIntStateOf(0) }
     var isCountingDown by remember { mutableStateOf(false) }
 
@@ -298,7 +297,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                         .setCaptureRequestOption(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON)
 
                     when {
-                        activeFilter.contains("Cinematic") || activeFilter == "Warm" -> {
+                        activeFilter.contains("Cinematic") || activeFilter == "Warm" || activeFilter.contains("Lens Blur") -> {
                             builder.setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT)
                         }
                         activeFilter.contains("Retro") -> {
@@ -343,20 +342,26 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                             applySafeZoom(currentZoom * zoomChange)
                         }
                     }
-                    .pointerInput(Unit) {
-                        detectTapGestures { offset ->
-                            focusPoint = offset
-                            val factory = previewView.meteringPointFactory
-                            val point = factory.createPoint(offset.x, offset.y)
-                            camera?.cameraControl?.startFocusAndMetering(FocusMeteringAction.Builder(point).build())
-                            scope.launch {
-                                delay(3000)
-                                focusPoint = null
-                            }
-                        }
-                    }
             )
         }
+
+        // 🎯 Tap-to-Focus टच थर
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        focusPoint = offset
+                        val factory = previewView.meteringPointFactory
+                        val point = factory.createPoint(offset.x, offset.y)
+                        camera?.cameraControl?.startFocusAndMetering(FocusMeteringAction.Builder(point).build())
+                        scope.launch {
+                            delay(4000)
+                            focusPoint = null
+                        }
+                    }
+                }
+        )
 
         if (activeFilter.contains("Cinematic")) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -385,20 +390,24 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             }
         }
 
+        // ☀️ बोटाखाली अचूक Tap-to-Focus चौकोन आणि सूर्य स्लायडर
         focusPoint?.let { pos ->
+            val xDp = with(density) { pos.x.toDp() } - 35.dp
+            val yDp = with(density) { pos.y.toDp() } - 35.dp
             Row(
-                modifier = Modifier.offset(pos.x.dp - 35.dp, pos.y.dp - 35.dp),
+                modifier = Modifier.offset(xDp, yDp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
                         .size(70.dp)
-                        .border(1.5.dp, Color(0xFFFFCC00), RoundedCornerShape(4.dp))
+                        .border(2.dp, Color(0xFFFFCC00), RoundedCornerShape(6.dp))
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(36.dp)
+                        .background(Color(0x55000000), CircleShape)
                         .pointerInput(Unit) {
                             detectVerticalDragGestures { _, dragAmount ->
                                 val delta = -dragAmount / 20f
@@ -409,7 +418,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("☀️", fontSize = 16.sp)
+                    Text("☀️", fontSize = 18.sp)
                 }
             }
         }
@@ -461,7 +470,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                     Text(if (isFlashOn) "⚡" else "⚡", color = if (isFlashOn) Color.Black else Color.White)
                 }
 
-                // ⚡ थेट AI 4K Restore बटण (गॅलरीतून १०x किंवा पुसट फोटो निवडणे)
                 Box(
                     modifier = Modifier
                         .background(Color(0xDDFFCC00), RoundedCornerShape(14.dp))
@@ -497,8 +505,10 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
 
             Spacer(modifier = Modifier.height(4.dp))
 
+            // 💧 अस्सल "Lens Blur" सह सर्व फिल्टर्सची पट्टी
             val allFiltersList = listOf(
                 "Normal" to "🚫",
+                "💧 Lens Blur" to "💧",
                 "Cinematic Look (9-in-1)" to "🎬",
                 "🥽 NVG Green" to "🥽",
                 "🌙 Color Night" to "🌙",
@@ -603,8 +613,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("$countdownValue", color = Color(0xFFFFCC00), fontSize = 95.sp)
             }
-        }
-        Column(
+        }Column(
             modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -664,13 +673,15 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 }
             }
 
-            if (selectedMode == "PORTRAIT") {
+            // 💧 अस्सल DSLR Lens Blur / Bokeh स्लायडर (ƒ 1.4 लुक)
+            if (selectedMode == "PORTRAIT" || activeFilter.contains("Lens Blur")) {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("👤 DSLR Bokeh: ${(portraitBlur * 100).toInt()}%", color = Color(0xFFFFCC00), fontSize = 11.sp)
+                    Text("💧 ƒ 1.4 Prime • Lens Blur ${(portraitBlur * 100).toInt()}%", color = Color(0xFFFFCC00), fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     Slider(value = portraitBlur, onValueChange = { portraitBlur = it }, valueRange = 0.2f..1.0f, colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00)))
                 }
             }
 
+            // 🔍 Arc Zoom Wheel (०.६x ते १०x)
             if (isZoomDialVisible) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 6.dp)) {
                     Text(text = String.format("%.1fx", currentZoom), color = Color(0xFFFFCC00), fontSize = 18.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
@@ -807,19 +818,17 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             }
         }
 
-        // ⚡ AI Generative 4K Processing Overlay
         if (isAiRestoring) {
             Box(modifier = Modifier.fillMaxSize().background(Color(0xCC000000)), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
                     CircularProgressIndicator(color = Color(0xFFFFCC00), modifier = Modifier.size(50.dp))
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("⚡ Generative AI 4K Restore चालू आहे...", color = Color.White, fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                    Text("डोळे, केस आणि चेहऱ्याचे पोत रिस्टोअर होत आहेत (CodeFormer)", color = Color.Gray, fontSize = 12.sp)
+                    Text("⚡ Real-ESRGAN 4K Super-Resolution सुरू आहे...", color = Color.White, fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    Text("क्रेन डिस्प्ले, आकडे, मजकूर व चेहरे ४ पट शार्प होत आहेत", color = Color.Gray, fontSize = 12.sp)
                 }
             }
         }
 
-        // 🎉 AI 4K Restored Result Dialog (Before/After)
         if (showAiResultDialog && aiRestoredBmp != null) {
             AlertDialog(
                 onDismissRequest = { showAiResultDialog = false },
@@ -828,19 +837,18 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                         Text("पूर्ण (गॅलरीत सेव्ह झाला)", color = Color.Black)
                     }
                 },
-                title = { Text("🎉 AI 4K Restore यशस्वी!", color = Color.White) },
+                title = { Text("🎉 4K Super-Resolution यशस्वी!", color = Color.White) },
                 text = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Image(bitmap = aiRestoredBmp!!.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Fit)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("✅ 4K सुपर रिझोल्यूशन थेट 'Pictures/ProCam AI' मध्ये सेव्ह झाला!", color = Color(0xFF4CAF50), fontSize = 12.sp)
+                        Text("✅ 4K सुपर-शार्प फोटो 'Pictures/ProCam AI' मध्ये सेव्ह झाला!", color = Color(0xFF4CAF50), fontSize = 12.sp)
                     }
                 },
                 containerColor = Color(0xFF1E2433)
             )
         }
 
-        // 🔑 Token Dialog (Replicate Token सेव्ह करणे)
         if (showTokenDialog) {
             AlertDialog(
                 onDismissRequest = { showTokenDialog = false },
@@ -976,11 +984,15 @@ fun captureProcessedPhoto(
 
                         bmp = cropToRealAspectRatio(bmp, aspectRatio)
 
-                        if (mode == "PORTRAIT") bmp = applyDSLRBokehEffect(bmp, blurLevel)
+                        // 💧 अस्सल DSLR Lens Blur + Bokeh Balls इफेक्ट
+                        if (mode == "PORTRAIT" || activeFilter.contains("Lens Blur")) {
+                            bmp = applyDSLRBokehEffect(bmp, blurLevel)
+                        }
                         if (mode == "NIGHT") bmp = processNightPhoto(bmp)
 
                         bmp = when {
                             activeFilter == "Normal" -> bmp
+                            activeFilter.contains("Lens Blur") -> bmp // आधीच applyDSLRBokehEffect ने प्रक्रिया झाली आहे
                             activeFilter.contains("NVG") -> applyMilitaryNightVision(bmp)
                             activeFilter.contains("Color Night") -> applyColorNightVision(bmp)
                             activeFilter.contains("Cinematic") -> applyMasterCinematic9in1(bmp)
