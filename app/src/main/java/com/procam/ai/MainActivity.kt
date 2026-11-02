@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,11 +48,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -102,6 +105,8 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
     val prefs = remember { context.getSharedPreferences("procam_ai_prefs", Context.MODE_PRIVATE) }
     var apiToken by remember { mutableStateOf(prefs.getString("replicate_token", "") ?: "") }
@@ -109,7 +114,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     var tokenInputText by remember { mutableStateOf(apiToken) }
 
     var isAiRestoring by remember { mutableStateOf(false) }
-    var aiOriginalBmp by remember { mutableStateOf<Bitmap?>(null) }
     var aiRestoredBmp by remember { mutableStateOf<Bitmap?>(null) }
     var showAiResultDialog by remember { mutableStateOf(false) }
 
@@ -124,7 +128,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                         showTokenDialog = true
                     } else {
                         isAiRestoring = true
-                        aiOriginalBmp = loaded
                         AiRestoreEngine.restorePhotoWithGenerativeAI(context, loaded, apiToken) { restored ->
                             isAiRestoring = false
                             if (restored != null) {
@@ -148,12 +151,20 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
 
     var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
     var isFlashOn by remember { mutableStateOf(false) }
-
     var currentZoom by remember { mutableFloatStateOf(1f) }
     var isZoomDialVisible by remember { mutableStateOf(false) }
 
     var selectedMode by remember { mutableStateOf("PHOTO") }
     var activeFilter by remember { mutableStateOf("Normal") }
+
+    // 🎨 रेखाटनाप्रमाणे उजव्या बाजूचे बाण आणि डॉट कंट्रोल्स
+    var isFilterSidebarOpen by remember { mutableStateOf(false) }  // बाण (Arrow) दाबल्यावर उघडणारे फिल्टर्स
+    var isColorReadingOpen by remember { mutableStateOf(false) }   // डॉट (Dot) दाबल्यावर उघडणारे RGB पॅनेल
+
+    // 🎨 मॅन्युअल रिअल-टाइम RGB कलर ग्रेडिंग स्लायडर्स (फोटो २ प्रमाणे)
+    var redValue by remember { mutableFloatStateOf(26f) }
+    var greenValue by remember { mutableFloatStateOf(116f) }
+    var blueValue by remember { mutableFloatStateOf(163f) }
 
     var selectedVideoResolution by remember { mutableStateOf("4K") }
     var isActionModeOn by remember { mutableStateOf(false) }
@@ -256,7 +267,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
         } catch (_: Exception) {}
     }
 
-    LaunchedEffect(hasPermissions, lensFacing, selectedMode, selectedVideoResolution, isActionModeOn, activeFilter) {
+    LaunchedEffect(hasPermissions, lensFacing, selectedMode, selectedVideoResolution, isActionModeOn, activeFilter, redValue, greenValue, blueValue) {
         if (hasPermissions) {
             val cameraProvider = ProcessCameraProvider.getInstance(context).get()
             val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
@@ -325,12 +336,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
         }
     }
 
-    LaunchedEffect(manualIso, isIsoAuto, shutterDenom, isShutterAuto, evValue, isWbAuto, manualFocusDistance, isFocusAuto) {
-        if (selectedMode == "PRO") {
-            applyProManualSettings()
-        }
-    }
-
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         if (hasPermissions) {
             AndroidView(
@@ -342,6 +347,24 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                             applySafeZoom(currentZoom * zoomChange)
                         }
                     }
+            )
+        }
+
+        // 🌈 स्क्रीनवर थेट दिसणारे रिअल-टाइम RGB कलर ग्रेडिंग (Live Color Grading Overlay)
+        if (redValue != 128f || greenValue != 128f || blueValue != 128f) {
+            val rTint = (redValue - 128f) / 255f
+            val gTint = (greenValue - 128f) / 255f
+            val bTint = (blueValue - 128f) / 255f
+            val overlayColor = Color(
+                red = (0.5f + rTint * 0.4f).coerceIn(0f, 1f),
+                green = (0.5f + gTint * 0.4f).coerceIn(0f, 1f),
+                blue = (0.5f + bTint * 0.4f).coerceIn(0f, 1f),
+                alpha = 0.18f
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(overlayColor)
             )
         }
 
@@ -363,6 +386,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 }
         )
 
+        // 🎬 2.39:1 Cinema Letterbox Bars
         if (activeFilter.contains("Cinematic")) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val h = maxHeight
@@ -372,6 +396,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             }
         }
 
+        // 3x3 Grid
         if (isGridOn) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width; val h = size.height; val c = Color(0x33FFFFFF)
@@ -382,6 +407,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             }
         }
 
+        // Level Line
         if (isLevelOn) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width; val h = size.height; val midY = h / 2
@@ -423,6 +449,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             }
         }
 
+        // Live Histogram Box
         Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -448,158 +475,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                     Box(modifier = Modifier.size(16.dp, 4.dp).background(col, RoundedCornerShape(1.dp)))
                 }
             }
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(top = 4.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = { isFlashOn = !isFlashOn; camera?.cameraControl?.enableTorch(isFlashOn) },
-                    modifier = Modifier.size(36.dp).background(if (isFlashOn) Color(0xFFFFCC00) else Color(0x66000000), CircleShape)
-                ) {
-                    Text(if (isFlashOn) "⚡" else "⚡", color = if (isFlashOn) Color.Black else Color.White)
-                }
-
-                Box(
-                    modifier = Modifier
-                        .background(Color(0xDDFFCC00), RoundedCornerShape(14.dp))
-                        .clickable { aiPhotoPickerLauncher.launch("image/*") }
-                        .padding(horizontal = 10.dp, vertical = 5.dp)
-                ) {
-                    Text("⚡ AI 4K Restore", color = Color.Black, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                }
-
-                Box(
-                    modifier = Modifier
-                        .background(Color(0x66000000), CircleShape)
-                        .clickable { isQuickMenuOpen = !isQuickMenuOpen }
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(if (isQuickMenuOpen) "▲" else "▼", color = Color.White, fontSize = 12.sp)
-                }
-
-                if (selectedMode == "VIDEO") {
-                    Box(
-                        modifier = Modifier
-                            .background(if (isActionModeOn) Color(0xFFFFCC00) else Color(0x66000000), RoundedCornerShape(12.dp))
-                            .clickable { isActionModeOn = !isActionModeOn }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text("🏃 ACTION", color = if (isActionModeOn) Color.Black else Color.White, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                    }
-                } else {
-                    Text("64MP RAW", color = Color(0xFFFFCC00), fontSize = 11.sp)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // 💧 अस्सल "Lens Blur" सह सर्व फिल्टर्सची पट्टी
-            val allFiltersList = listOf(
-                "Normal" to "🚫",
-                "💧 Lens Blur" to "💧",
-                "Cinematic Look (9-in-1)" to "🎬",
-                "🥽 NVG Green" to "🥽",
-                "🌙 Color Night" to "🌙",
-                "Video Glow" to "✨",
-                "Retro Look" to "🎞️",
-                "Urban Night" to "🌃",
-                "4K Quality" to "⚡",
-                "Standard" to "🍎",
-                "Rich Contrast" to "🎭",
-                "Vibrant" to "🌈",
-                "Warm" to "☀️",
-                "Cool" to "❄️",
-                "Noir" to "🖤",
-                "Astro" to "🌌",
-                "Macro" to "🔬"
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                allFiltersList.forEach { (name, icon) ->
-                    val isSel = activeFilter == name
-                    Row(
-                        modifier = Modifier
-                            .background(if (isSel) Color(0xFFFFCC00) else Color(0x88161B26), RoundedCornerShape(16.dp))
-                            .border(1.dp, if (isSel) Color.White else Color(0x44FFFFFF), RoundedCornerShape(16.dp))
-                            .clickable { activeFilter = name }
-                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(icon, fontSize = 11.sp)
-                        Text(
-                            text = name,
-                            color = if (isSel) Color.Black else Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = if (isSel) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
-                        )
-                    }
-                }
-            }
-        }
-
-        AnimatedVisibility(
-            visible = isQuickMenuOpen,
-            modifier = Modifier.padding(top = 80.dp, start = 16.dp, end = 16.dp).align(Alignment.TopCenter)
-        ) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xF2141822)),
-                shape = RoundedCornerShape(16.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C3240))
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    val tileRows = listOf(
-                        listOf(
-                            QuickMenuTile("HDR", if (isHDROn) "On" else "Off", isHDROn) { isHDROn = !isHDROn },
-                            QuickMenuTile("AI Cam", if (isAICameraOn) "On" else "Off", isAICameraOn) { isAICameraOn = !isAICameraOn },
-                            QuickMenuTile("Aspect", selectedAspect, true) {
-                                selectedAspect = when(selectedAspect) { "4:3" -> "16:9"; "16:9" -> "1:1"; "1:1" -> "Full"; else -> "4:3" }
-                            },
-                            QuickMenuTile("Timer", if (timerDuration == 0) "Off" else "${timerDuration}s", timerDuration > 0) {
-                                timerDuration = when(timerDuration) { 0 -> 3; 3 -> 5; 5 -> 10; else -> 0 }
-                            }
-                        ),
-                        listOf(
-                            QuickMenuTile("Grid #", if (isGridOn) "On" else "Off", isGridOn) { isGridOn = !isGridOn },
-                            QuickMenuTile("Level ⊝", if (isLevelOn) "On" else "Off", isLevelOn) { isLevelOn = !isLevelOn },
-                            QuickMenuTile("Watermark", if (isWatermarkOn) "On" else "Off", isWatermarkOn) { isWatermarkOn = !isWatermarkOn },
-                            QuickMenuTile("🔑 AI Token", if (apiToken.isNotBlank()) "Active" else "Set Token", apiToken.isNotBlank()) {
-                                showTokenDialog = true
-                            }
-                        )
-                    )
-
-                    tileRows.forEach { rowTiles ->
-                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                            rowTiles.forEach { tile ->
-                                Column(
-                                    modifier = Modifier
-                                        .size(72.dp, 58.dp)
-                                        .background(if (tile.isActive) Color(0x33FFCC00) else Color(0xFF1E2433), RoundedCornerShape(10.dp))
-                                        .border(1.dp, if (tile.isActive) Color(0xFFFFCC00) else Color.Transparent, RoundedCornerShape(10.dp))
-                                        .clickable { tile.action() }
-                                        .padding(4.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    Text(tile.title, color = if (tile.isActive) Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        }Text(tile.title, color = if (tile.isActive) Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                                     Text(tile.subtitle, color = Color.Gray, fontSize = 9.sp)
                                 }
                             }
@@ -614,6 +490,10 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 Text("$countdownValue", color = Color(0xFFFFCC00), fontSize = 95.sp)
             }
         }
+
+        // -------------------------------------------------------------
+        // तळाचा विभाग: Pro Mode + Arc Zoom Wheel + Modes + Shutter
+        // -------------------------------------------------------------
         Column(
             modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -674,7 +554,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 }
             }
 
-            // 💧 अस्सल DSLR Lens Blur / Bokeh स्लायडर (ƒ 1.4 लुक)
             if (selectedMode == "PORTRAIT" || activeFilter.contains("Lens Blur")) {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("💧 ƒ 1.4 Prime • Lens Blur ${(portraitBlur * 100).toInt()}%", color = Color(0xFFFFCC00), fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
@@ -682,7 +561,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 }
             }
 
-            // 🔍 Arc Zoom Wheel (०.६x ते १०x)
             if (isZoomDialVisible) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 6.dp)) {
                     Text(text = String.format("%.1fx", currentZoom), color = Color(0xFFFFCC00), fontSize = 18.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
@@ -772,10 +650,10 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                                 delay(1000)
                             }
                             isCountingDown = false
-                            captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, portraitBlur, isWatermarkOn, selectedAspect, evValue)
+                            captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, portraitBlur, isWatermarkOn, selectedAspect, evValue, redValue, greenValue, blueValue)
                         }
                     } else {
-                        captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, portraitBlur, isWatermarkOn, selectedAspect, evValue)
+                        captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, portraitBlur, isWatermarkOn, selectedAspect, evValue, redValue, greenValue, blueValue)
                     }
                 }
             }
@@ -935,7 +813,10 @@ fun captureProcessedPhoto(
     blurLevel: Float,
     addWatermark: Boolean,
     aspectRatio: String,
-    currentEV: Float
+    currentEV: Float,
+    rVal: Float = 128f,
+    gVal: Float = 128f,
+    bVal: Float = 128f
 ) {
     val imageCapture = capture ?: return
 
@@ -985,15 +866,33 @@ fun captureProcessedPhoto(
 
                         bmp = cropToRealAspectRatio(bmp, aspectRatio)
 
-                        // 💧 अस्सल DSLR Lens Blur + Bokeh Balls इफेक्ट
+                        // 💧 अस्सल DSLR Lens Blur + Specular Bokeh Balls
                         if (mode == "PORTRAIT" || activeFilter.contains("Lens Blur")) {
                             bmp = applyDSLRBokehEffect(bmp, blurLevel)
                         }
                         if (mode == "NIGHT") bmp = processNightPhoto(bmp)
 
+                        // 🎨 मॅन्युअल RGB कलर ग्रेडिंग लागू करणे (जर वापरकर्त्याने RGB स्लायडर्स बदलले असतील)
+                        if (rVal != 128f || gVal != 128f || bVal != 128f) {
+                            val rScale = rVal / 128f
+                            val gScale = gVal / 128f
+                            val bScale = bVal / 128f
+                            val rgbRes = Bitmap.createBitmap(bmp.width, bmp.height, Bitmap.Config.ARGB_8888)
+                            val rgbCanvas = android.graphics.Canvas(rgbRes)
+                            val cm = android.graphics.ColorMatrix(floatArrayOf(
+                                rScale, 0f, 0f, 0f, 0f,
+                                0f, gScale, 0f, 0f, 0f,
+                                0f, 0f, bScale, 0f, 0f,
+                                0f, 0f, 0f, 1f, 0f
+                            ))
+                            rgbCanvas.drawBitmap(bmp, 0f, 0f, android.graphics.Paint().apply { colorFilter = android.graphics.ColorMatrixColorFilter(cm); isAntiAlias = true })
+                            bmp = rgbRes
+                        }
+
+                        // 🎨 सर्व कॉम्बो फिल्टर्स
                         bmp = when {
                             activeFilter == "Normal" -> bmp
-                            activeFilter.contains("Lens Blur") -> bmp // आधीच applyDSLRBokehEffect ने प्रक्रिया झाली आहे
+                            activeFilter.contains("Lens Blur") -> bmp
                             activeFilter.contains("NVG") -> applyMilitaryNightVision(bmp)
                             activeFilter.contains("Color Night") -> applyColorNightVision(bmp)
                             activeFilter.contains("Cinematic") -> applyMasterCinematic9in1(bmp)
