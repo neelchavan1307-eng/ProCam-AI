@@ -475,7 +475,8 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                     Box(modifier = Modifier.size(16.dp, 4.dp).background(col, RoundedCornerShape(1.dp)))
                 }
             }
-        }Text(tile.title, color = if (tile.isActive) Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        }
+        Text(tile.title, color = if (tile.isActive) Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                                     Text(tile.subtitle, color = Color.Gray, fontSize = 9.sp)
                                 }
                             }
