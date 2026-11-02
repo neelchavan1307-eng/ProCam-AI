@@ -54,7 +54,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -105,8 +104,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
     val prefs = remember { context.getSharedPreferences("procam_ai_prefs", Context.MODE_PRIVATE) }
     var apiToken by remember { mutableStateOf(prefs.getString("replicate_token", "") ?: "") }
@@ -157,14 +154,13 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     var selectedMode by remember { mutableStateOf("PHOTO") }
     var activeFilter by remember { mutableStateOf("Normal") }
 
-    // 🎨 रेखाटनाप्रमाणे उजव्या बाजूचे बाण आणि डॉट कंट्रोल्स
-    var isFilterSidebarOpen by remember { mutableStateOf(false) }  // बाण (Arrow) दाबल्यावर उघडणारे फिल्टर्स
-    var isColorReadingOpen by remember { mutableStateOf(false) }   // डॉट (Dot) दाबल्यावर उघडणारे RGB पॅनेल
+    var isFilterSidebarOpen by remember { mutableStateOf(false) }
+    var isColorReadingOpen by remember { mutableStateOf(false) }
 
-    // 🎨 मॅन्युअल रिअल-टाइम RGB कलर ग्रेडिंग स्लायडर्स (फोटो २ प्रमाणे)
-    var redValue by remember { mutableFloatStateOf(26f) }
-    var greenValue by remember { mutableFloatStateOf(116f) }
-    var blueValue by remember { mutableFloatStateOf(163f) }
+    // मॅन्युअल RGB स्लायडर्स
+    var redValue by remember { mutableFloatStateOf(128f) }
+    var greenValue by remember { mutableFloatStateOf(128f) }
+    var blueValue by remember { mutableFloatStateOf(128f) }
 
     var selectedVideoResolution by remember { mutableStateOf("4K") }
     var isActionModeOn by remember { mutableStateOf(false) }
@@ -267,7 +263,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
         } catch (_: Exception) {}
     }
 
-    LaunchedEffect(hasPermissions, lensFacing, selectedMode, selectedVideoResolution, isActionModeOn, activeFilter, redValue, greenValue, blueValue) {
+    LaunchedEffect(hasPermissions, lensFacing, selectedMode, selectedVideoResolution, isActionModeOn, activeFilter) {
         if (hasPermissions) {
             val cameraProvider = ProcessCameraProvider.getInstance(context).get()
             val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
@@ -336,6 +332,12 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
         }
     }
 
+    LaunchedEffect(manualIso, isIsoAuto, shutterDenom, isShutterAuto, evValue, isWbAuto, manualFocusDistance, isFocusAuto) {
+        if (selectedMode == "PRO") {
+            applyProManualSettings()
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         if (hasPermissions) {
             AndroidView(
@@ -347,24 +349,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                             applySafeZoom(currentZoom * zoomChange)
                         }
                     }
-            )
-        }
-
-        // 🌈 स्क्रीनवर थेट दिसणारे रिअल-टाइम RGB कलर ग्रेडिंग (Live Color Grading Overlay)
-        if (redValue != 128f || greenValue != 128f || blueValue != 128f) {
-            val rTint = (redValue - 128f) / 255f
-            val gTint = (greenValue - 128f) / 255f
-            val bTint = (blueValue - 128f) / 255f
-            val overlayColor = Color(
-                red = (0.5f + rTint * 0.4f).coerceIn(0f, 1f),
-                green = (0.5f + gTint * 0.4f).coerceIn(0f, 1f),
-                blue = (0.5f + bTint * 0.4f).coerceIn(0f, 1f),
-                alpha = 0.18f
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(overlayColor)
             )
         }
 
@@ -442,41 +426,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                                 camera?.cameraControl?.setExposureCompensationIndex(evValue.toInt())
                             }
                         },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("☀️", fontSize = 18.sp)
-                }
-            }
-        }
-
-        // Live Histogram Box
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 16.dp, bottom = 135.dp)
-                .size(62.dp, 36.dp)
-                .background(Color(0x88000000), RoundedCornerShape(6.dp))
-                .border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(6.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("HISTO ∿", color = Color(0xFFFFCC00), fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-        }
-
-        if (isRecording) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 12.dp)
-                    .background(Color(0x88000000), RoundedCornerShape(8.dp))
-                    .padding(4.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
-                listOf(Color.Red, Color.Yellow, Color.Green, Color.Green, Color.Green).forEach { col ->
-                    Box(modifier = Modifier.size(16.dp, 4.dp).background(col, RoundedCornerShape(1.dp)))
-                }
-            }
-        }
-         // -------------------------------------------------------------
+             // -------------------------------------------------------------
         // 🔥 रेखाटनाप्रमाणे: उजव्या बाजूला फ्लोटिंग बाण आणि RGB डॉट
         // -------------------------------------------------------------
         Row(
@@ -600,21 +550,18 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // R Slider
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text("R:", color = Color.White, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.width(20.dp))
                         Slider(value = redValue, onValueChange = { redValue = it }, valueRange = 0f..255f, colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFFFF3B30)), modifier = Modifier.weight(1f))
                         Text("${redValue.toInt()}", color = Color.White, fontSize = 11.sp, modifier = Modifier.width(28.dp))
                     }
 
-                    // G Slider
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text("G:", color = Color.White, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.width(20.dp))
                         Slider(value = greenValue, onValueChange = { greenValue = it }, valueRange = 0f..255f, colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFF34C759)), modifier = Modifier.weight(1f))
                         Text("${greenValue.toInt()}", color = Color.White, fontSize = 11.sp, modifier = Modifier.width(28.dp))
                     }
 
-                    // B Slider
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text("B:", color = Color.White, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.width(20.dp))
                         Slider(value = blueValue, onValueChange = { blueValue = it }, valueRange = 0f..255f, colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFF0A84FF)), modifier = Modifier.weight(1f))
@@ -633,7 +580,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             }
         }
 
-        // 🎬 रेखाटनाप्रमाणे: बाण दाबल्यावर उघडणारा व्हर्टिकल फिल्टर्स साइडबार (Up-Down Scroll)
+        // 🎬 रेखाटनाप्रमाणे: बाण दाबल्यावर उघडणारा व्हर्टिकल फिल्टर्स साइडबार
         AnimatedVisibility(
             visible = isFilterSidebarOpen,
             enter = fadeIn() + slideInHorizontally { it },
@@ -683,11 +630,11 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                                 .fillMaxWidth()
                                 .background(if (isSel) Color(0xFFFFCC00) else Color(0xFF1E2433), RoundedCornerShape(10.dp))
                                 .border(1.dp, if (isSel) Color.White else Color.Transparent, RoundedCornerShape(10.dp))
-                            .clickable {
-                                activeFilter = name
-                                isFilterSidebarOpen = false
-                            }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                .clickable {
+                                    activeFilter = name
+                                    isFilterSidebarOpen = false
+                                }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -818,12 +765,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("$countdownValue", color = Color(0xFFFFCC00), fontSize = 95.sp)
             }
-        }
-
-        // -------------------------------------------------------------
-        // तळाचा विभाग: Pro Mode + Arc Zoom Wheel + Modes + Shutter
-        // -------------------------------------------------------------
-        Column(
+        }Column(
             modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -890,6 +832,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 }
             }
 
+            // 🔍 Arc Zoom Wheel (०.६x ते १०x)
             if (isZoomDialVisible) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 6.dp)) {
                     Text(text = String.format("%.1fx", currentZoom), color = Color(0xFFFFCC00), fontSize = 18.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
@@ -1195,27 +1138,58 @@ fun captureProcessedPhoto(
 
                         bmp = cropToRealAspectRatio(bmp, aspectRatio)
 
-                        // 💧 अस्सल DSLR Lens Blur + Specular Bokeh Balls
+                        // 💧 Lens Blur / Portrait
                         if (mode == "PORTRAIT" || activeFilter.contains("Lens Blur")) {
                             bmp = applyDSLRBokehEffect(bmp, blurLevel)
                         }
                         if (mode == "NIGHT") bmp = processNightPhoto(bmp)
 
-                        // 🎨 मॅन्युअल RGB कलर ग्रेडिंग लागू करणे (जर वापरकर्त्याने RGB स्लायडर्स बदलले असतील)
+                        // 🎨 Selective Color: फक्त लाल वस्तू लाल होईल, पांढरी फरशी पांढरीच राहील!
                         if (rVal != 128f || gVal != 128f || bVal != 128f) {
-                            val rScale = rVal / 128f
-                            val gScale = gVal / 128f
-                            val bScale = bVal / 128f
-                            val rgbRes = Bitmap.createBitmap(bmp.width, bmp.height, Bitmap.Config.ARGB_8888)
-                            val rgbCanvas = android.graphics.Canvas(rgbRes)
-                            val cm = android.graphics.ColorMatrix(floatArrayOf(
-                                rScale, 0f, 0f, 0f, 0f,
-                                0f, gScale, 0f, 0f, 0f,
-                                0f, 0f, bScale, 0f, 0f,
-                                0f, 0f, 0f, 1f, 0f
-                            ))
-                            rgbCanvas.drawBitmap(bmp, 0f, 0f, android.graphics.Paint().apply { colorFilter = android.graphics.ColorMatrixColorFilter(cm); isAntiAlias = true })
-                            bmp = rgbRes
+                            val rRatio = (rVal - 128f) / 128f
+                            val gRatio = (gVal - 128f) / 128f
+                            val bRatio = (bVal - 128f) / 128f
+
+                            val w = bmp.width
+                            val h = bmp.height
+                            val pixels = IntArray(w * h)
+                            bmp.getPixels(pixels, 0, w, 0, 0, w, h)
+                            val hsv = FloatArray(3)
+
+                            for (i in pixels.indices) {
+                                val c = pixels[i]
+                                val r = (c shr 16) and 0xFF
+                                val g = (c shr 8) and 0xFF
+                                val b = c and 0xFF
+
+                                val maxC = maxOf(r, maxOf(g, b))
+                                val minC = minOf(r, minOf(g, b))
+                                val chroma = maxC - minC
+
+                                // पांढरी फरशी, काळा फोन किंवा राखाडी टाईल्सला हात लावायचा नाही!
+                                if (chroma < 35) {
+                                    continue
+                                }
+
+                                android.graphics.Color.colorToHSV(c, hsv)
+                                val hue = hsv[0]
+
+                                // फक्त मूळ लाल वस्तूंवरच लाल रंग वाढवणे!
+                                if ((hue <= 30 || hue >= 330) && rRatio != 0f) {
+                                    hsv[1] = (hsv[1] * (1f + rRatio * 0.9f)).coerceIn(0f, 1f)
+                                    pixels[i] = android.graphics.Color.HSVToColor((c ushr 24), hsv)
+                                } else if (hue in 80f..160f && gRatio != 0f) {
+                                    hsv[1] = (hsv[1] * (1f + gRatio * 0.9f)).coerceIn(0f, 1f)
+                                    pixels[i] = android.graphics.Color.HSVToColor((c ushr 24), hsv)
+                                } else if (hue in 190f..260f && bRatio != 0f) {
+                                    hsv[1] = (hsv[1] * (1f + bRatio * 0.9f)).coerceIn(0f, 1f)
+                                    pixels[i] = android.graphics.Color.HSVToColor((c ushr 24), hsv)
+                                }
+                            }
+
+                            val outBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                            outBmp.setPixels(pixels, 0, w, 0, 0, w, h)
+                            bmp = outBmp
                         }
 
                         // 🎨 सर्व कॉम्बो फिल्टर्स
