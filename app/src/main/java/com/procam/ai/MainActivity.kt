@@ -157,7 +157,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     var isFilterSidebarOpen by remember { mutableStateOf(false) }
     var isColorReadingOpen by remember { mutableStateOf(false) }
 
-    // मॅन्युअल RGB स्लायडर्स
     var redValue by remember { mutableFloatStateOf(128f) }
     var greenValue by remember { mutableFloatStateOf(128f) }
     var blueValue by remember { mutableFloatStateOf(128f) }
@@ -426,7 +425,41 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                                 camera?.cameraControl?.setExposureCompensationIndex(evValue.toInt())
                             }
                         },
-             // -------------------------------------------------------------
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("☀️", fontSize = 18.sp)
+                }
+            }
+        }
+
+        // Live Histogram Box
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 16.dp, bottom = 135.dp)
+                .size(62.dp, 36.dp)
+                .background(Color(0x88000000), RoundedCornerShape(6.dp))
+                .border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(6.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("HISTO ∿", color = Color(0xFFFFCC00), fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        }
+
+        // Audio VU Meter
+        if (isRecording) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 12.dp)
+                    .background(Color(0x88000000), RoundedCornerShape(8.dp))
+                    .padding(4.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                listOf(Color.Red, Color.Yellow, Color.Green, Color.Green, Color.Green).forEach { col ->
+                    Box(modifier = Modifier.size(16.dp, 4.dp).background(col, RoundedCornerShape(1.dp)))
+                }
+            }
+        }// -------------------------------------------------------------
         // 🔥 रेखाटनाप्रमाणे: उजव्या बाजूला फ्लोटिंग बाण आणि RGB डॉट
         // -------------------------------------------------------------
         Row(
@@ -766,7 +799,8 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 Text("$countdownValue", color = Color(0xFFFFCC00), fontSize = 95.sp)
             }
         }
-           Column(
+
+        Column(
             modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
