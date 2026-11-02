@@ -476,7 +476,335 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 }
             }
         }
-         Text(tile.title, color = if (tile.isActive) Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+         // -------------------------------------------------------------
+        // 🔥 रेखाटनाप्रमाणे: उजव्या बाजूला फ्लोटिंग बाण आणि RGB डॉट
+        // -------------------------------------------------------------
+        Row(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // १. पांढरा ट्रान्सपरंट बाण (फिल्टर्स साइडबारसाठी)
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .background(Color(0x55FFFFFF), CircleShape)
+                    .border(1.5.dp, Color.White.copy(alpha = 0.8f), CircleShape)
+                    .clickable { isFilterSidebarOpen = !isFilterSidebarOpen },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (isFilterSidebarOpen) "▶" else "◀",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+            }
+
+            // २. पांढरा ट्रान्सपरंट डॉट (COLOR READING OPTION साठी)
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .background(Color(0x55FFFFFF), CircleShape)
+                    .border(1.5.dp, Color.White.copy(alpha = 0.8f), CircleShape)
+                    .clickable { isColorReadingOpen = !isColorReadingOpen },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .background(
+                            Brush.sweepGradient(
+                                listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)
+                            ),
+                            CircleShape
+                        )
+                )
+            }
+        }
+
+        // 🎨 COLOR READING OPTION विंडो (Live RGB Sliders + Waveform + CMYK)
+        AnimatedVisibility(
+            visible = isColorReadingOpen,
+            enter = fadeIn() + slideInHorizontally { it },
+            exit = fadeOut() + slideOutHorizontally { it },
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(16.dp)
+        ) {
+            val currentColor = Color(redValue.toInt(), greenValue.toInt(), blueValue.toInt())
+            val hexCode = String.format("#%02X%02X%02X", redValue.toInt(), greenValue.toInt(), blueValue.toInt())
+
+            val rP = redValue / 255f
+            val gP = greenValue / 255f
+            val bP = blueValue / 255f
+            val kVal = 1f - maxOf(rP, maxOf(gP, bP))
+            val cVal = if (kVal < 1f) ((1f - rP - kVal) / (1f - kVal) * 100).toInt() else 0
+            val mVal = if (kVal < 1f) ((1f - gP - kVal) / (1f - kVal) * 100).toInt() else 0
+            val yVal = if (kVal < 1f) ((1f - bP - kVal) / (1f - kVal) * 100).toInt() else 0
+            val kPercent = (kVal * 100).toInt()
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xF2161A22)),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C3240)),
+                modifier = Modifier.width(300.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("COLOR READING OPTION", color = Color.White, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Text("✕", color = Color.Gray, fontSize = 14.sp, modifier = Modifier.clickable { isColorReadingOpen = false }.padding(4.dp))
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(100.dp)
+                            .background(Color(0xFF0F1218), RoundedCornerShape(10.dp))
+                            .border(1.dp, Color(0xFF242A36), RoundedCornerShape(10.dp))
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val w = size.width
+                                val h = size.height
+                                drawLine(Color(0xFF0A84FF), Offset(w * 0.15f, h * 0.9f), Offset(w * 0.25f, h * 0.15f), 3.dp.toPx())
+                                drawLine(Color(0xFF0A84FF), Offset(w * 0.25f, h * 0.15f), Offset(w * 0.45f, h * 0.8f), 3.dp.toPx())
+                                drawLine(Color(0xFFFF3B30), Offset(w * 0.35f, h * 0.85f), Offset(w * 0.50f, h * 0.35f), 3.dp.toPx())
+                                drawLine(Color(0xFFFF3B30), Offset(w * 0.50f, h * 0.35f), Offset(w * 0.85f, h * 0.9f), 3.dp.toPx())
+                                drawLine(Color(0xFFFFD60A), Offset(w * 0.55f, h * 0.75f), Offset(w * 0.70f, h * 0.60f), 2.dp.toPx())
+                            }
+                            Text(hexCode, color = Color.White, fontSize = 11.sp, modifier = Modifier.align(Alignment.TopEnd).padding(2.dp))
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .width(60.dp)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(currentColor)
+                                .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // R Slider
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text("R:", color = Color.White, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.width(20.dp))
+                        Slider(value = redValue, onValueChange = { redValue = it }, valueRange = 0f..255f, colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFFFF3B30)), modifier = Modifier.weight(1f))
+                        Text("${redValue.toInt()}", color = Color.White, fontSize = 11.sp, modifier = Modifier.width(28.dp))
+                    }
+
+                    // G Slider
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text("G:", color = Color.White, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.width(20.dp))
+                        Slider(value = greenValue, onValueChange = { greenValue = it }, valueRange = 0f..255f, colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFF34C759)), modifier = Modifier.weight(1f))
+                        Text("${greenValue.toInt()}", color = Color.White, fontSize = 11.sp, modifier = Modifier.width(28.dp))
+                    }
+
+                    // B Slider
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text("B:", color = Color.White, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.width(20.dp))
+                        Slider(value = blueValue, onValueChange = { blueValue = it }, valueRange = 0f..255f, colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFF0A84FF)), modifier = Modifier.weight(1f))
+                        Text("${blueValue.toInt()}", color = Color.White, fontSize = 11.sp, modifier = Modifier.width(28.dp))
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("C: $cVal%", color = Color.LightGray, fontSize = 11.sp)
+                        Text("M: $mVal%", color = Color.LightGray, fontSize = 11.sp)
+                        Text("Y: $yVal%", color = Color.LightGray, fontSize = 11.sp)
+                        Text("K: $kPercent%", color = Color.LightGray, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+
+        // 🎬 रेखाटनाप्रमाणे: बाण दाबल्यावर उघडणारा व्हर्टिकल फिल्टर्स साइडबार (Up-Down Scroll)
+        AnimatedVisibility(
+            visible = isFilterSidebarOpen,
+            enter = fadeIn() + slideInHorizontally { it },
+            exit = fadeOut() + slideOutHorizontally { it },
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 65.dp, top = 80.dp, bottom = 120.dp)
+        ) {
+            val allFiltersList = listOf(
+                "Normal" to "🚫",
+                "💧 Lens Blur" to "💧",
+                "Cinematic Look (9-in-1)" to "🎬",
+                "🥽 NVG Green" to "🥽",
+                "🌙 Color Night" to "🌙",
+                "Video Glow" to "✨",
+                "Retro Look" to "🎞️",
+                "Urban Night" to "🌃",
+                "4K Quality" to "⚡",
+                "Standard" to "🍎",
+                "Rich Contrast" to "🎭",
+                "Vibrant" to "🌈",
+                "Warm" to "☀️",
+                "Cool" to "❄️",
+                "Noir" to "🖤",
+                "Astro" to "🌌",
+                "Macro" to "🔬"
+            )
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xF2141822)),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C3240)),
+                modifier = Modifier.width(180.dp).fillMaxHeight()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(8.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("FILTERS (UP-DOWN)", color = Color.Gray, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.padding(4.dp))
+                    allFiltersList.forEach { (name, icon) ->
+                        val isSel = activeFilter == name
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(if (isSel) Color(0xFFFFCC00) else Color(0xFF1E2433), RoundedCornerShape(10.dp))
+                                .border(1.dp, if (isSel) Color.White else Color.Transparent, RoundedCornerShape(10.dp))
+                            .clickable {
+                                activeFilter = name
+                                isFilterSidebarOpen = false
+                            }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(icon, fontSize = 14.sp)
+                            Text(
+                                text = name,
+                                color = if (isSel) Color.Black else Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSel) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // टॉप बार
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(top = 4.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = { isFlashOn = !isFlashOn; camera?.cameraControl?.enableTorch(isFlashOn) },
+                    modifier = Modifier.size(36.dp).background(if (isFlashOn) Color(0xFFFFCC00) else Color(0x66000000), CircleShape)
+                ) {
+                    Text(if (isFlashOn) "⚡" else "⚡", color = if (isFlashOn) Color.Black else Color.White)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .background(Color(0xDDFFCC00), RoundedCornerShape(14.dp))
+                        .clickable { aiPhotoPickerLauncher.launch("image/*") }
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    Text("⚡ AI 4K Restore", color = Color.Black, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .background(Color(0x66000000), CircleShape)
+                        .clickable { isQuickMenuOpen = !isQuickMenuOpen }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(if (isQuickMenuOpen) "▲" else "▼", color = Color.White, fontSize = 12.sp)
+                }
+
+                if (selectedMode == "VIDEO") {
+                    Box(
+                        modifier = Modifier
+                            .background(if (isActionModeOn) Color(0xFFFFCC00) else Color(0x66000000), RoundedCornerShape(12.dp))
+                            .clickable { isActionModeOn = !isActionModeOn }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("🏃 ACTION", color = if (isActionModeOn) Color.Black else Color.White, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    }
+                } else {
+                    Text("64MP RAW", color = Color(0xFFFFCC00), fontSize = 11.sp)
+                }
+            }
+        }
+
+        // Quick Settings Dropdown
+        AnimatedVisibility(
+            visible = isQuickMenuOpen,
+            modifier = Modifier.padding(top = 80.dp, start = 16.dp, end = 16.dp).align(Alignment.TopCenter)
+        ) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xF2141822)),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C3240))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    val tileRows = listOf(
+                        listOf(
+                            QuickMenuTile("HDR", if (isHDROn) "On" else "Off", isHDROn) { isHDROn = !isHDROn },
+                            QuickMenuTile("AI Cam", if (isAICameraOn) "On" else "Off", isAICameraOn) { isAICameraOn = !isAICameraOn },
+                            QuickMenuTile("Aspect", selectedAspect, true) {
+                                selectedAspect = when(selectedAspect) { "4:3" -> "16:9"; "16:9" -> "1:1"; "1:1" -> "Full"; else -> "4:3" }
+                            },
+                            QuickMenuTile("Timer", if (timerDuration == 0) "Off" else "${timerDuration}s", timerDuration > 0) {
+                                timerDuration = when(timerDuration) { 0 -> 3; 3 -> 5; 5 -> 10; else -> 0 }
+                            }
+                        ),
+                        listOf(
+                            QuickMenuTile("Grid #", if (isGridOn) "On" else "Off", isGridOn) { isGridOn = !isGridOn },
+                            QuickMenuTile("Level ⊝", if (isLevelOn) "On" else "Off", isLevelOn) { isLevelOn = !isLevelOn },
+                            QuickMenuTile("Watermark", if (isWatermarkOn) "On" else "Off", isWatermarkOn) { isWatermarkOn = !isWatermarkOn },
+                            QuickMenuTile("🔑 AI Token", if (apiToken.isNotBlank()) "Active" else "Set Token", apiToken.isNotBlank()) {
+                                showTokenDialog = true
+                            }
+                        )
+                    )
+
+                    tileRows.forEach { rowTiles ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            rowTiles.forEach { tile ->
+                                Column(
+                                    modifier = Modifier
+                                        .size(72.dp, 58.dp)
+                                        .background(if (tile.isActive) Color(0x33FFCC00) else Color(0xFF1E2433), RoundedCornerShape(10.dp))
+                                        .border(1.dp, if (tile.isActive) Color(0xFFFFCC00) else Color.Transparent, RoundedCornerShape(10.dp))
+                                        .clickable { tile.action() }
+                                        .padding(4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(tile.title, color = if (tile.isActive) Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                                     Text(tile.subtitle, color = Color.Gray, fontSize = 9.sp)
                                 }
                             }
