@@ -1170,4 +1170,120 @@ fun captureProcessedPhoto(
 
                         try {
                             val exif = android.media.ExifInterface(tempFile.absolutePath)
-                 
+                            val orient = exif.getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL)
+                            val matrix = android.graphics.Matrix()
+                            when (orient) {
+                                android.media.ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                                android.media.ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                                android.media.ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                            }
+                            if (!matrix.isIdentity) {
+                                bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
+                            }
+                        } catch (_: Exception) {}
+
+                        bmp = cropToRealAspectRatio(bmp, aspectRatio)
+
+                        if (mode == "PORTRAIT" || activeFilter.contains("Lens Blur")) {
+                            bmp = applyDSLRBokehEffect(bmp, blurLevel)
+                        }
+                        if (mode == "NIGHT") bmp = processNightPhoto(bmp)
+
+                        // 🎨 100% Real Working Temp, Tint आणि Saturation Color Grading
+                        if (tempVal != 0f || tintVal != 0f || satVal != 0f) {
+                            val cm = android.graphics.ColorMatrix()
+                            if (satVal != 0f) {
+                                val sMatrix = android.graphics.ColorMatrix()
+                                sMatrix.setSaturation((1f + satVal / 100f).coerceAtLeast(0f))
+                                cm.postConcat(sMatrix)
+                            }
+                            val rT = (tempVal * 0.22f) + (tintVal * 0.12f)
+                            val gT = -(tintVal * 0.22f)
+                            val bT = -(tempVal * 0.22f) + (tintVal * 0.12f)
+                            val tempTintMat = android.graphics.ColorMatrix(floatArrayOf(
+                                1f, 0f, 0f, 0f, rT,
+                                0f, 1f, 0f, 0f, gT,
+                                0f, 0f, 1f, 0f, bT,
+                                0f, 0f, 0f, 1f, 0f
+                            ))
+                            cm.postConcat(tempTintMat)
+
+                            val gradedBmp = Bitmap.createBitmap(bmp.width, bmp.height, Bitmap.Config.ARGB_8888)
+                            val gCanvas = android.graphics.Canvas(gradedBmp)
+                            gCanvas.drawBitmap(bmp, 0f, 0f, android.graphics.Paint().apply { colorFilter = android.graphics.ColorMatrixColorFilter(cm); isAntiAlias = true })
+                            bmp = gradedBmp
+                        }
+
+                        // 🎨 Selective Color (फरशी पांढरीच ठेवणे)
+                        if (rVal != 128f || gVal != 128f || bVal != 128f) {
+                            val rRatio = (rVal - 128f) / 128f
+                            val gRatio = (gVal - 128f) / 128f
+                            val bRatio = (bVal - 128f) / 128f
+
+                            val w = bmp.width
+                            val h = bmp.height
+                            val pixels = IntArray(w * h)
+                            bmp.getPixels(pixels, 0, w, 0, 0, w, h)
+                            val hsv = FloatArray(3)
+
+                            for (i in pixels.indices) {
+                                val c = pixels[i]
+                                val r = (c shr 16) and 0xFF
+                                val g = (c shr 8) and 0xFF
+                                val b = c and 0xFF
+                                val maxC = maxOf(r, maxOf(g, b))
+                                val minC = minOf(r, minOf(g, b))
+                                if (maxC - minC < 35) continue
+
+                                android.graphics.Color.colorToHSV(c, hsv)
+                                val hue = hsv[0]
+                                if ((hue <= 30 || hue >= 330) && rRatio != 0f) {
+                                    hsv[1] = (hsv[1] * (1f + rRatio * 0.9f)).coerceIn(0f, 1f)
+                                    pixels[i] = android.graphics.Color.HSVToColor((c ushr 24), hsv)
+                                } else if (hue in 80f..160f && gRatio != 0f) {
+                                    hsv[1] = (hsv[1] * (1f + gRatio * 0.9f)).coerceIn(0f, 1f)
+                                    pixels[i] = android.graphics.Color.HSVToColor((c ushr 24), hsv)
+                                } else if (hue in 190f..260f && bRatio != 0f) {
+                                    hsv[1] = (hsv[1] * (1f + bRatio * 0.9f)).coerceIn(0f, 1f)
+                                    pixels[i] = android.graphics.Color.HSVToColor((c ushr 24), hsv)
+                                }
+                            }
+                            val outBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                            outBmp.setPixels(pixels, 0, w, 0, 0, w, h)
+                            bmp = outBmp
+                        }
+
+                        // सर्व फिल्टर्स
+                        bmp = when {
+                            activeFilter == "Normal" -> bmp
+                            activeFilter.contains("Lens Blur") -> bmp
+                            activeFilter.contains("NVG") -> applyMilitaryNightVision(bmp)
+                            activeFilter.contains("Color Night") -> applyColorNightVision(bmp)
+                            activeFilter.contains("Cinematic") -> applyMasterCinematic9in1(bmp)
+                            activeFilter.contains("Glow") -> applyVideoGlowHalo(bmp)
+                            activeFilter.contains("Retro") -> applyVintage70sFilter(bmp)
+                            activeFilter.contains("Night") || activeFilter.contains("Cyberpunk") -> applyCyberpunkNeonFilter(bmp)
+                            activeFilter.contains("4K") -> applyAIEnhancement(bmp)
+                            activeFilter == "Golden" -> applyGoldenHourGlow(bmp)
+                            activeFilter == "Noir" -> applyNoirFilter(bmp)
+                            activeFilter == "Astro" -> applyAstroPhoto(bmp)
+                            activeFilter == "Macro" -> applyMacroSharpen(bmp)
+                            activeFilter in listOf("Rich Contrast", "Vibrant", "Warm", "Cool") -> applyPhotographicStyle(bmp, activeFilter)
+                            else -> bmp
+                        }
+
+                        if (addWatermark) bmp = addBrandWatermark(bmp)
+
+                        saveFinalProcessedBitmap(context, bmp, "${mode}_${activeFilter.replace(" ", "_")}")
+                        tempFile.delete()
+
+                    } catch (e: Throwable) {
+                        (context as? android.app.Activity)?.runOnUiThread {
+                            Toast.makeText(context, "इफेक्ट त्रुटी: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }.start()
+            }
+        }
+    )
+}
