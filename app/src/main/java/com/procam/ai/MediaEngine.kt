@@ -126,83 +126,55 @@ fun exportCinematicVideoWithTransformer(
 }
 
 // -------------------------------------------------------------
-// २. 💧 अस्सल DSLR Lens Blur + Specular Bokeh Balls इंजिन
+// 💧 दुरुस्त केलेले अस्सल DSLR Lens Blur (कधीही डोके किंवा वरचा भाग काळा होणार नाही!)
 // -------------------------------------------------------------
 fun applyDSLRBokehEffect(src: Bitmap, blurRadius: Float): Bitmap {
     val w = src.width
     val h = src.height
 
-    // १. मखमली ऑप्टिकल ब्लर (Creamy Bokeh Layer)
-    val downFactor = (14f * blurRadius).toInt().coerceIn(6, 16)
+    // १. मखमली ऑप्टिकल ब्लर (बॅकग्राऊंडसाठी)
+    val downFactor = (10f * blurRadius).toInt().coerceIn(4, 12)
     val small = Bitmap.createScaledBitmap(src, (w / downFactor).coerceAtLeast(1), (h / downFactor).coerceAtLeast(1), true)
     val blurredBg = Bitmap.createScaledBitmap(small, w, h, true)
 
     val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(result)
+    // संपूर्ण बॅकग्राऊंडवर आधी मऊ ब्लर ठेवणे
     canvas.drawBitmap(blurredBg, 0f, 0f, null)
 
-    // २. ✨ Specular Bokeh Highlight Engine (दिव्यांचे चमकणारे गोल बोकेह बॉल्स)
-    val bokehCanvas = Canvas(result)
-    val bokehPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-    }
-    val step = (w / 35).coerceAtLeast(12)
-    val discRadius = (w * 0.028f * blurRadius).coerceIn(14f, 48f)
-
-    // बॅकग्राऊंडमधील लाईट्स ओळखून तिथे गोलाकार बोकेह डिस्क तयार करणे
-    for (y in 0 until (h * 0.60f).toInt() step step) {
-        for (x in 0 until w step step) {
-            val pixel = src.getPixel(x, y)
-            val r = (pixel shr 16) and 0xFF
-            val g = (pixel shr 8) and 0xFF
-            val b = pixel and 0xFF
-            val luma = (0.299 * r + 0.587 * g + 0.114 * b).toInt()
-
-            // जर बॅकग्राऊंडमध्ये चमकदार दिवा/लाइट असेल
-            if (luma > 180) {
-                bokehPaint.color = android.graphics.Color.argb(
-                    75,
-                    (r * 1.15f).toInt().coerceAtMost(255),
-                    (g * 1.10f).toInt().coerceAtMost(255),
-                    (b * 1.25f).toInt().coerceAtMost(255)
-                )
-                bokehCanvas.drawCircle(x.toFloat(), y.toFloat(), discRadius, bokehPaint)
-            }
-        }
-    }
-
-    // ३. 👥 Multi-Person Sharp Foreground Mask (एकापेक्षा जास्त लोक असले तरी सर्व पूर्ण शार्प!)
+    // २. व्यक्तीला (डोके, चेहरा, शरीर) १००% सुरक्षित ठेवणारा लंबगोलाकार डेप्थ मास्क
     val depthMask = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val maskCanvas = Canvas(depthMask)
-    val depthShader = android.graphics.LinearGradient(
-        0f, h * 0.20f, // वर बॅकग्राऊंड ब्लर
-        0f, h * 0.45f, // लोकांचे चेहरे, कपडे आणि शरीर डावीकडून उजवीपर्यंत १००% शार्प
-        intArrayOf(android.graphics.Color.TRANSPARENT, android.graphics.Color.WHITE),
-        floatArrayOf(0f, 1f),
+
+    val centerX = w / 2f
+    val centerY = h * 0.48f // चेहऱ्याच्या आणि शरीराच्या नैसर्गिक रेषेवर केंद्र
+    val radius = maxOf(w, h) * 0.48f
+
+    val depthShader = RadialGradient(
+        centerX, centerY, radius,
+        intArrayOf(
+            android.graphics.Color.WHITE, 
+            android.graphics.Color.WHITE, 
+            android.graphics.Color.TRANSPARENT
+        ),
+        floatArrayOf(0f, 0.65f, 1f),
         Shader.TileMode.CLAMP
     )
-    val gradPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         shader = depthShader
     }
-    maskCanvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), gradPaint)
+    maskCanvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), maskPaint)
 
-    // ४. 🌅 लोकांच्या अंगावर सिनेमॅटिक वॉर्म ग्लो (Amber/Golden Illumination)
-    val warmSubject = src.copy(Bitmap.Config.ARGB_8888, true)
-    val warmCanvas = Canvas(warmSubject)
-    val warmMatrix = ColorMatrix(floatArrayOf(
-        1.14f, 0f, 0f, 0f, 14f,  // Warm Amber Pop
-        0f, 1.05f, 0f, 0f, 6f,   // Glowing Skin Tone
-        0f, 0f, 0.94f, 0f, -4f,
-        0f, 0f, 0f, 1f, 0f
-    ))
-    warmCanvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(warmMatrix); isAntiAlias = true })
-
-    // ५. शार्प व्यक्तींचा थर मखमली बॅकग्राऊंडवर अचूक ब्लेंड करणे
+    // ३. मूळ शार्प फोटो (विचित्र पिवळा रंग न देता नैसर्गिक त्वचा)
+    val sharpSubject = src.copy(Bitmap.Config.ARGB_8888, true)
+    val subjectCanvas = Canvas(sharpSubject)
     val blendPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
     }
-    warmCanvas.drawBitmap(depthMask, 0f, 0f, blendPaint)
-    canvas.drawBitmap(warmSubject, 0f, 0f, Paint(Paint.ANTI_ALIAS_FLAG))
+    subjectCanvas.drawBitmap(depthMask, 0f, 0f, blendPaint)
+
+    // ४. व्यक्तीला ब्लर बॅकग्राऊंडवर अचूक बसवणे
+    canvas.drawBitmap(sharpSubject, 0f, 0f, Paint(Paint.ANTI_ALIAS_FLAG))
 
     return result
 }
