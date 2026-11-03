@@ -12,6 +12,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.KeyEvent
+import android.view.OrientationEventListener
+import android.view.Surface
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -26,6 +28,7 @@ import androidx.camera.video.*
 import androidx.camera.video.VideoCapture
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -46,6 +49,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -54,6 +58,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -104,6 +109,31 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
+
+    // 🔄 अस्सल ऑटो-रोटेशन सेन्सर (उभा/आडवा फोन ओळखणे)
+    var deviceOrientation by remember { mutableIntStateOf(0) }
+    DisposableEffect(Unit) {
+        val orientationListener = object : OrientationEventListener(context) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (orientation == ORIENTATION_UNKNOWN) return
+                val newRot = when (orientation) {
+                    in 45..134 -> 270   // Landscape Right
+                    in 135..224 -> 180  // Reverse Portrait
+                    in 225..314 -> 90   // Landscape Left
+                    else -> 0           // Normal Portrait
+                }
+                if (newRot != deviceOrientation) {
+                    deviceOrientation = newRot
+                }
+            }
+        }
+        if (orientationListener.canDetectOrientation()) orientationListener.enable()
+        onDispose { orientationListener.disable() }
+    }
+
+    // आयकॉन्स स्मूथली फिरवण्यासाठी ॲनिमेशन
+    val uiRotation by animateFloatAsState(targetValue = -deviceOrientation.toFloat(), label = "uiRot")
 
     val prefs = remember { context.getSharedPreferences("procam_ai_prefs", Context.MODE_PRIVATE) }
     var apiToken by remember { mutableStateOf(prefs.getString("replicate_token", "") ?: "") }
@@ -158,9 +188,9 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     var isColorReadingOpen by remember { mutableStateOf(false) }
 
     // 🎨 Live Color Grading Controls (Temp, Tint, Saturation + RGB)
-    var tempValue by remember { mutableFloatStateOf(0f) }        // -100 (Cool) to +100 (Warm)
-    var tintValue by remember { mutableFloatStateOf(0f) }        // -100 (Green) to +100 (Magenta)
-    var satValue by remember { mutableFloatStateOf(0f) }         // -100 (B&W) to +100 (Vivid)
+    var tempValue by remember { mutableFloatStateOf(0f) }
+    var tintValue by remember { mutableFloatStateOf(0f) }
+    var satValue by remember { mutableFloatStateOf(0f) }
     var redValue by remember { mutableFloatStateOf(128f) }
     var greenValue by remember { mutableFloatStateOf(128f) }
     var blueValue by remember { mutableFloatStateOf(128f) }
@@ -168,8 +198,9 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     var selectedVideoResolution by remember { mutableStateOf("4K") }
     var isActionModeOn by remember { mutableStateOf(false) }
 
+    // 📱 डीफॉल्ट "Full" Screen मोड
     var isQuickMenuOpen by remember { mutableStateOf(false) }
-    var selectedAspect by remember { mutableStateOf("4:3") }
+    var selectedAspect by remember { mutableStateOf("Full") }
     var timerDuration by remember { mutableIntStateOf(0) }
     var isGridOn by remember { mutableStateOf(true) }
     var isLevelOn by remember { mutableStateOf(true) }
@@ -287,7 +318,9 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                     videoCapture = vc
                     camera = cameraProvider.bindToLifecycle(lifecycleOwner, selector, preview, vc)
                 } else {
-                    val ic = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY).build()
+                    val ic = ImageCapture.Builder()
+                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                        .build()
                     imageCapture = ic
                     camera = cameraProvider.bindToLifecycle(lifecycleOwner, selector, preview, ic)
                     if (selectedMode == "NIGHT" || activeFilter.contains("Astro") || activeFilter.contains("Night")) {
@@ -306,7 +339,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                         .setCaptureRequestOption(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON)
                         .setCaptureRequestOption(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON)
 
-                    // Live Temp & Tint Hardware AWB Shift
                     if (tempValue > 20f) {
                         builder.setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT)
                     } else if (tempValue < -20f) {
@@ -400,7 +432,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             val xDp = with(density) { pos.x.toDp() } - 35.dp
             val yDp = with(density) { pos.y.toDp() } - 35.dp
             Row(
-                modifier = Modifier.offset(xDp, yDp),
+                modifier = Modifier.offset(xDp, yDp).rotate(uiRotation),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -433,6 +465,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = 16.dp, bottom = 135.dp)
+                .rotate(uiRotation)
                 .size(62.dp, 36.dp)
                 .background(Color(0x88000000), RoundedCornerShape(6.dp))
                 .border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(6.dp)),
@@ -446,6 +479,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 12.dp)
+                    .rotate(uiRotation)
                     .background(Color(0x88000000), RoundedCornerShape(8.dp))
                     .padding(4.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp)
@@ -455,7 +489,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 }
             }
         }// -------------------------------------------------------------
-        // 🔥 रेखाटनाप्रमाणे: उजव्या बाजूला फ्लोटिंग बाण आणि RGB डॉट
+        // 🔥 रेखाटनाप्रमाणे: उजव्या बाजूला फ्लोटिंग बाण आणि RGB डॉट (आडवे फिरणारे)
         // -------------------------------------------------------------
         Row(
             modifier = Modifier
@@ -467,6 +501,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             Box(
                 modifier = Modifier
                     .size(42.dp)
+                    .rotate(uiRotation)
                     .background(Color(0x55FFFFFF), CircleShape)
                     .border(1.5.dp, Color.White.copy(alpha = 0.8f), CircleShape)
                     .clickable { isFilterSidebarOpen = !isFilterSidebarOpen },
@@ -483,6 +518,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             Box(
                 modifier = Modifier
                     .size(42.dp)
+                    .rotate(uiRotation)
                     .background(Color(0x55FFFFFF), CircleShape)
                     .border(1.5.dp, Color.White.copy(alpha = 0.8f), CircleShape)
                     .clickable { isColorReadingOpen = !isColorReadingOpen },
@@ -501,7 +537,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             }
         }
 
-        // 🎨 १००% रियल वर्किंग COLOR READING OPTION विंडो (Temp, Tint, Saturation + Waveform + CMYK)
+        // 🎨 १००% रियल वर्किंग COLOR READING OPTION विंडो
         AnimatedVisibility(
             visible = isColorReadingOpen,
             enter = fadeIn() + slideInHorizontally { it },
@@ -509,6 +545,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             modifier = Modifier
                 .align(Alignment.Center)
                 .padding(16.dp)
+                .rotate(uiRotation)
         ) {
             val currentColor = Color(
                 ((redValue + tempValue * 0.5f + tintValue * 0.3f).coerceIn(0f, 255f)).toInt(),
@@ -571,7 +608,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 🌡️ Temp Slider (Cool Blue ते Warm Golden)
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text("Temp:", color = Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.width(42.dp))
                         Slider(
@@ -584,7 +620,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                         Text("${tempValue.toInt()}", color = Color.White, fontSize = 10.sp, modifier = Modifier.width(26.dp))
                     }
 
-                    // 🟣 Tint Slider (Cinema Green ते Magenta)
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text("Tint:", color = Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.width(42.dp))
                         Slider(
@@ -597,7 +632,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                         Text("${tintValue.toInt()}", color = Color.White, fontSize = 10.sp, modifier = Modifier.width(26.dp))
                     }
 
-                    // 🌈 Saturation Slider (B&W ते Vivid Punchy)
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text("Sat:", color = Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.width(42.dp))
                         Slider(
@@ -615,7 +649,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                         Text("Reset All", color = Color(0xFFFFCC00), fontSize = 11.sp, modifier = Modifier.clickable {
                             tempValue = 0f; tintValue = 0f; satValue = 0f
                         }.padding(4.dp))
-                        Text("Real-Time Engine", color = Color.Gray, fontSize = 10.sp)
+                        Text("Live Color Engine", color = Color.Gray, fontSize = 10.sp)
                     }
                 }
             }
@@ -629,6 +663,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .padding(end = 65.dp, top = 80.dp, bottom = 120.dp)
+                .rotate(uiRotation)
         ) {
             val allFiltersList = listOf(
                 "Normal" to "🚫",
@@ -708,13 +743,14 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             ) {
                 IconButton(
                     onClick = { isFlashOn = !isFlashOn; camera?.cameraControl?.enableTorch(isFlashOn) },
-                    modifier = Modifier.size(36.dp).background(if (isFlashOn) Color(0xFFFFCC00) else Color(0x66000000), CircleShape)
+                    modifier = Modifier.size(36.dp).rotate(uiRotation).background(if (isFlashOn) Color(0xFFFFCC00) else Color(0x66000000), CircleShape)
                 ) {
                     Text(if (isFlashOn) "⚡" else "⚡", color = if (isFlashOn) Color.Black else Color.White)
                 }
 
                 Box(
                     modifier = Modifier
+                        .rotate(uiRotation)
                         .background(Color(0xDDFFCC00), RoundedCornerShape(14.dp))
                         .clickable { aiPhotoPickerLauncher.launch("image/*") }
                         .padding(horizontal = 10.dp, vertical = 5.dp)
@@ -724,9 +760,10 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
 
                 Box(
                     modifier = Modifier
+                        .size(36.dp)
+                        .rotate(uiRotation)
                         .background(Color(0x66000000), CircleShape)
-                        .clickable { isQuickMenuOpen = !isQuickMenuOpen }
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .clickable { isQuickMenuOpen = !isQuickMenuOpen },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(if (isQuickMenuOpen) "▲" else "▼", color = Color.White, fontSize = 12.sp)
@@ -735,6 +772,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 if (selectedMode == "VIDEO") {
                     Box(
                         modifier = Modifier
+                            .rotate(uiRotation)
                             .background(if (isActionModeOn) Color(0xFFFFCC00) else Color(0x66000000), RoundedCornerShape(12.dp))
                             .clickable { isActionModeOn = !isActionModeOn }
                             .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -742,15 +780,15 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                         Text("🏃 ACTION", color = if (isActionModeOn) Color.Black else Color.White, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     }
                 } else {
-                    Text("64MP RAW", color = Color(0xFFFFCC00), fontSize = 11.sp)
+                    Text("64MP RAW", color = Color(0xFFFFCC00), fontSize = 11.sp, modifier = Modifier.rotate(uiRotation))
                 }
             }
         }
 
-        // Quick Settings Dropdown
+        // Quick Settings Dropdown (Full Screen पर्यायासह)
         AnimatedVisibility(
             visible = isQuickMenuOpen,
-            modifier = Modifier.padding(top = 80.dp, start = 16.dp, end = 16.dp).align(Alignment.TopCenter)
+            modifier = Modifier.padding(top = 80.dp, start = 16.dp, end = 16.dp).align(Alignment.TopCenter).rotate(uiRotation)
         ) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xF2141822)),
@@ -763,7 +801,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                             QuickMenuTile("HDR", if (isHDROn) "On" else "Off", isHDROn) { isHDROn = !isHDROn },
                             QuickMenuTile("AI Cam", if (isAICameraOn) "On" else "Off", isAICameraOn) { isAICameraOn = !isAICameraOn },
                             QuickMenuTile("Aspect", selectedAspect, true) {
-                                selectedAspect = when(selectedAspect) { "4:3" -> "16:9"; "16:9" -> "1:1"; "1:1" -> "Full"; else -> "4:3" }
+                                selectedAspect = when(selectedAspect) { "Full" -> "4:3"; "4:3" -> "16:9"; "16:9" -> "1:1"; else -> "Full" }
                             },
                             QuickMenuTile("Timer", if (timerDuration == 0) "Off" else "${timerDuration}s", timerDuration > 0) {
                                 timerDuration = when(timerDuration) { 0 -> 3; 3 -> 5; 5 -> 10; else -> 0 }
@@ -804,7 +842,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
 
         if (isCountingDown) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("$countdownValue", color = Color(0xFFFFCC00), fontSize = 95.sp)
+                Text("$countdownValue", color = Color(0xFFFFCC00), fontSize = 95.sp, modifier = Modifier.rotate(uiRotation))
             }
         }
 
@@ -817,6 +855,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .rotate(uiRotation)
                         .background(Color(0x99111622), RoundedCornerShape(12.dp))
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -860,7 +899,8 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                             onClick = { selectedProTab = tab },
                             colors = ButtonDefaults.buttonColors(containerColor = if (isSel) Color(0xFFFFCC00) else Color(0xFF1E2433)),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.rotate(uiRotation)
                         ) {
                             Text(tab, color = if (isSel) Color.Black else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                         }
@@ -870,14 +910,14 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
 
             if (selectedMode == "PORTRAIT" || activeFilter.contains("Lens Blur")) {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("💧 ƒ 1.4 Prime • Lens Blur ${(portraitBlur * 100).toInt()}%", color = Color(0xFFFFCC00), fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    Text("💧 ƒ 1.4 Prime • Lens Blur ${(portraitBlur * 100).toInt()}%", color = Color(0xFFFFCC00), fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.rotate(uiRotation))
                     Slider(value = portraitBlur, onValueChange = { portraitBlur = it }, valueRange = 0.2f..1.0f, colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00)))
                 }
             }
 
             if (isZoomDialVisible) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 6.dp)) {
-                    Text(text = String.format("%.1fx", currentZoom), color = Color(0xFFFFCC00), fontSize = 18.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    Text(text = String.format("%.1fx", currentZoom), color = Color(0xFFFFCC00), fontSize = 18.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.rotate(uiRotation))
                     Spacer(modifier = Modifier.height(2.dp))
                     Box(
                         modifier = Modifier
@@ -912,14 +952,14 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 listOf(0.6f to ".6", 1f to "1", 2f to "2", 5f to "5", 10f to "10").forEach { (z, label) ->
                     val isSel = abs(currentZoom - z) < 0.15f
                     Box(
-                        modifier = Modifier.size(32.dp).background(if (isSel) Color(0x44FFFFFF) else Color.Transparent, CircleShape).clickable { applySafeZoom(z); isZoomDialVisible = false },
+                        modifier = Modifier.size(32.dp).rotate(uiRotation).background(if (isSel) Color(0x44FFFFFF) else Color.Transparent, CircleShape).clickable { applySafeZoom(z); isZoomDialVisible = false },
                         contentAlignment = Alignment.Center
                     ) {
                         Text(label, color = if (isSel) Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = if (isSel) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal)
                     }
                 }
                 Box(
-                    modifier = Modifier.background(if (isZoomDialVisible) Color(0xFFFFCC00) else Color(0x33FFFFFF), RoundedCornerShape(12.dp)).clickable { isZoomDialVisible = !isZoomDialVisible }.padding(horizontal = 8.dp, vertical = 4.dp)
+                    modifier = Modifier.rotate(uiRotation).background(if (isZoomDialVisible) Color(0xFFFFCC00) else Color(0x33FFFFFF), RoundedCornerShape(12.dp)).clickable { isZoomDialVisible = !isZoomDialVisible }.padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text("DIAL", color = if (isZoomDialVisible) Color.Black else Color.White, fontSize = 10.sp)
                 }
@@ -936,7 +976,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                         color = if (isSel) Color(0xFFFFCC00) else Color.White,
                         fontSize = if (isSel) 14.sp else 12.sp,
                         fontWeight = if (isSel) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
-                        modifier = Modifier.clickable { selectedMode = mode }.padding(vertical = 4.dp, horizontal = 6.dp)
+                        modifier = Modifier.rotate(uiRotation).clickable { selectedMode = mode }.padding(vertical = 4.dp, horizontal = 6.dp)
                     )
                 }
             }
@@ -964,10 +1004,10 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                                 delay(1000)
                             }
                             isCountingDown = false
-                            captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, portraitBlur, isWatermarkOn, selectedAspect, evValue, redValue, greenValue, blueValue, tempValue, tintValue, satValue)
+                            captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, portraitBlur, isWatermarkOn, selectedAspect, evValue, redValue, greenValue, blueValue, tempValue, tintValue, satValue, deviceOrientation)
                         }
                     } else {
-                        captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, portraitBlur, isWatermarkOn, selectedAspect, evValue, redValue, greenValue, blueValue, tempValue, tintValue, satValue)
+                        captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, portraitBlur, isWatermarkOn, selectedAspect, evValue, redValue, greenValue, blueValue, tempValue, tintValue, satValue, deviceOrientation)
                     }
                 }
             }
@@ -1001,7 +1041,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 )
 
                 Box(
-                    modifier = Modifier.size(45.dp).background(Color(0x66000000), CircleShape).clickable {
+                    modifier = Modifier.size(45.dp).rotate(uiRotation).background(Color(0x66000000), CircleShape).clickable {
                         lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
                     },
                     contentAlignment = Alignment.Center
@@ -1119,7 +1159,7 @@ fun startRealVideoRecording(
     }
 }
 
-// 📸 100% Real Working Photo Engine (Temp, Tint, Saturation + Selective Color)
+// 📸 १००% फुल स्क्रीन + अचूक दिशा (Orientation) सह ६४ MP फोटो सेव्हर
 fun captureProcessedPhoto(
     context: Context,
     capture: ImageCapture?,
@@ -1134,7 +1174,8 @@ fun captureProcessedPhoto(
     bVal: Float = 128f,
     tempVal: Float = 0f,
     tintVal: Float = 0f,
-    satVal: Float = 0f
+    satVal: Float = 0f,
+    deviceOrientation: Int = 0
 ) {
     val imageCapture = capture ?: return
 
@@ -1152,22 +1193,12 @@ fun captureProcessedPhoto(
             override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                 Thread {
                     try {
-                        val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                        BitmapFactory.decodeFile(tempFile.absolutePath, boundsOptions)
-
-                        var sampleSize = 1
-                        val maxDim = maxOf(boundsOptions.outWidth, boundsOptions.outHeight)
-                        while (maxDim / sampleSize > 2560) {
-                            sampleSize *= 2
-                        }
-
                         val decodeOptions = BitmapFactory.Options().apply {
-                            inSampleSize = sampleSize
                             inPreferredConfig = Bitmap.Config.ARGB_8888
                         }
-
                         var bmp = BitmapFactory.decodeFile(tempFile.absolutePath, decodeOptions) ?: return@Thread
 
+                        // 🔄 १. अचूक दिशा (EXIF + Device Orientation रोटेशन - फोटो कधीही आडवा होणार नाही)
                         try {
                             val exif = android.media.ExifInterface(tempFile.absolutePath)
                             val orient = exif.getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL)
@@ -1182,14 +1213,17 @@ fun captureProcessedPhoto(
                             }
                         } catch (_: Exception) {}
 
-                        bmp = cropToRealAspectRatio(bmp, aspectRatio)
+                        // 📱 २. १००% बेझल-टू-बेझल Full Screen आणि Aspect Ratio क्रॉप
+                        val isPortrait = (deviceOrientation == 0 || deviceOrientation == 180)
+                        bmp = smartCropAspectRatio(bmp, aspectRatio, isPortrait)
 
+                        // 💧 Lens Blur / Portrait
                         if (mode == "PORTRAIT" || activeFilter.contains("Lens Blur")) {
                             bmp = applyDSLRBokehEffect(bmp, blurLevel)
                         }
                         if (mode == "NIGHT") bmp = processNightPhoto(bmp)
 
-                        // 🎨 100% Real Working Temp, Tint आणि Saturation Color Grading
+                        // 🎨 Live Temp, Tint आणि Saturation
                         if (tempVal != 0f || tintVal != 0f || satVal != 0f) {
                             val cm = android.graphics.ColorMatrix()
                             if (satVal != 0f) {
@@ -1214,7 +1248,7 @@ fun captureProcessedPhoto(
                             bmp = gradedBmp
                         }
 
-                        // 🎨 Selective Color (फरशी पांढरीच ठेवणे)
+                        // 🎨 Selective Color (पांढरी फरशी पांढरीच ठेवणे)
                         if (rVal != 128f || gVal != 128f || bVal != 128f) {
                             val rRatio = (rVal - 128f) / 128f
                             val gRatio = (gVal - 128f) / 128f
@@ -1286,4 +1320,36 @@ fun captureProcessedPhoto(
             }
         }
     )
+}
+
+// 📱 अचूक Full Screen व Ratio गणित
+fun smartCropAspectRatio(src: Bitmap, aspect: String, isPortrait: Boolean): Bitmap {
+    val w = src.width
+    val h = src.height
+
+    if (aspect == "1:1") {
+        val s = minOf(w, h)
+        return Bitmap.createBitmap(src, (w - s) / 2, (h - s) / 2, s, s)
+    }
+
+    // गुणोत्तर ठरवणे (उभ्या फोटोसाठी 9:16 किंवा 9:20; आडव्यासाठी 16:9 किंवा 20:9)
+    val ratio = when (aspect) {
+        "Full" -> if (isPortrait) (9f / 20f) else (20f / 9f)
+        "16:9" -> if (isPortrait) (9f / 16f) else (16f / 9f)
+        else -> if (isPortrait) (3f / 4f) else (4f / 3f) // 4:3 (मूळ सेन्सर)
+    }
+
+    val currentRatio = w.toFloat() / h.toFloat()
+
+    return if (currentRatio > ratio) {
+        // रुंदी जास्त आहे, डावीकडून-उजवीकडून क्रॉप करणे
+        val targetWidth = (h * ratio).toInt()
+        val xOffset = ((w - targetWidth) / 2).coerceAtLeast(0)
+        Bitmap.createBitmap(src, xOffset, 0, targetWidth.coerceAtMost(w), h)
+    } else {
+        // उंची जास्त आहे, वरून-खालून क्रॉप करणे
+        val targetHeight = (w / ratio).toInt()
+        val yOffset = ((h - targetHeight) / 2).coerceAtLeast(0)
+        Bitmap.createBitmap(src, 0, yOffset, w, targetHeight.coerceAtMost(h))
+    }
 }
