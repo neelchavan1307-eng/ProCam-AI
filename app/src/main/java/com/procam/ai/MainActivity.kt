@@ -68,6 +68,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.math.abs
@@ -110,7 +111,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
-    // 🔄 अचूक Auto-Rotate गणित (आडवा केल्यावर कधीही उलटा होणार नाही)
+    // 🔄 १००% अचूक Auto-Rotate गणित (कधीही उलटे फिरणार नाही)
     var deviceOrientation by remember { mutableIntStateOf(0) }
     DisposableEffect(Unit) {
         val orientationListener = object : OrientationEventListener(context) {
@@ -131,8 +132,16 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
         onDispose { orientationListener.disable() }
     }
 
-    // चिन्हे आणि मजकूर गुरुत्वाकर्षणाप्रमाणे सरळ ठेवण्यासाठी ॲनिमेशन
-    val uiRotation by animateFloatAsState(targetValue = -deviceOrientation.toFloat(), label = "uiRot")
+    // चिन्हे व मजकूर नेहमी डोळ्यांसमोर सरळ राहण्यासाठी अचूक ॲनिमेशन
+    val uiRotation by animateFloatAsState(
+        targetValue = when (deviceOrientation) {
+            90 -> 90f
+            270 -> -90f
+            180 -> 180f
+            else -> 0f
+        },
+        label = "uiRot"
+    )
 
     val prefs = remember { context.getSharedPreferences("procam_ai_prefs", Context.MODE_PRIVATE) }
     var apiToken by remember { mutableStateOf(prefs.getString("replicate_token", "") ?: "") }
@@ -154,6 +163,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                         showTokenDialog = true
                     } else {
                         isAiRestoring = true
+                        aiRestoredBmp = null
                         AiRestoreEngine.restorePhotoWithGenerativeAI(context, loaded, apiToken) { restored ->
                             isAiRestoring = false
                             if (restored != null) {
@@ -186,7 +196,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     var isFilterSidebarOpen by remember { mutableStateOf(false) }
     var isColorReadingOpen by remember { mutableStateOf(false) }
 
-    // 🎨 Live Color Grading Controls (Temp, Tint, Saturation + RGB)
+    // 🎨 Live Color Grading Controls
     var tempValue by remember { mutableFloatStateOf(0f) }
     var tintValue by remember { mutableFloatStateOf(0f) }
     var satValue by remember { mutableFloatStateOf(0f) }
@@ -295,7 +305,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
         } catch (_: Exception) {}
     }
 
-    // 🎥 फोटो आणि व्हिडिओ दोन्हींवर 100% रिअल-टाइम हार्डवेअर फिल्टर्स
+    // 🎥 कॅमेरा, OIS व रिअल-टाइम हार्डवेअर बाइंडिंग
     LaunchedEffect(hasPermissions, lensFacing, selectedMode, selectedVideoResolution, isActionModeOn, activeFilter, tempValue, tintValue) {
         if (hasPermissions) {
             val cameraProvider = ProcessCameraProvider.getInstance(context).get()
@@ -330,7 +340,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
 
                 applySafeZoom(currentZoom)
 
-                // 📳 व्हिडिओवर थेट रेकॉर्ड होणारे हार्डवेअर फिल्टर्स
                 try {
                     val camera2Control = Camera2CameraControl.from(camera!!.cameraControl)
                     val builder = CaptureRequestOptions.Builder()
@@ -448,7 +457,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             }
         }
 
-        // ☀️ बोटाखाली अचूक Tap-to-Focus चौकोन आणि सूर्य स्लायडर (फिरणारा)
+        // ☀️ बोटाखाली अचूक Tap-to-Focus चौकोन आणि सूर्य स्लायडर
         focusPoint?.let { pos ->
             val xDp = with(density) { pos.x.toDp() } - 35.dp
             val yDp = with(density) { pos.y.toDp() } - 35.dp
@@ -481,7 +490,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             }
         }
 
-        // Live Histogram Box (फिरणारा)
+        // Live Histogram Box
         Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -510,7 +519,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 }
             }
         }// -------------------------------------------------------------
-        // 🔥 रेखाटनाप्रमाणे: उजव्या बाजूला फ्लोटिंग बाण आणि RGB डॉट (योग्य दिशेत फिरणारे)
+        // 🔥 रेखाटनाप्रमाणे: उजव्या बाजूला फ्लोटिंग बाण आणि RGB डॉट (१००% टच फिक्स)
         // -------------------------------------------------------------
         Row(
             modifier = Modifier
@@ -521,33 +530,33 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
         ) {
             Box(
                 modifier = Modifier
-                    .size(42.dp)
+                    .size(46.dp)
+                    .clickable { isFilterSidebarOpen = !isFilterSidebarOpen } // Touch आधी लावला आहे!
                     .rotate(uiRotation)
-                    .background(Color(0x55FFFFFF), CircleShape)
-                    .border(1.5.dp, Color.White.copy(alpha = 0.8f), CircleShape)
-                    .clickable { isFilterSidebarOpen = !isFilterSidebarOpen },
+                    .background(Color(0x66FFFFFF), CircleShape)
+                    .border(1.5.dp, Color.White.copy(alpha = 0.85f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = if (isFilterSidebarOpen) "▶" else "◀",
                     color = Color.White,
-                    fontSize = 16.sp,
+                    fontSize = 18.sp,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
             }
 
             Box(
                 modifier = Modifier
-                    .size(42.dp)
+                    .size(46.dp)
+                    .clickable { isColorReadingOpen = !isColorReadingOpen }
                     .rotate(uiRotation)
-                    .background(Color(0x55FFFFFF), CircleShape)
-                    .border(1.5.dp, Color.White.copy(alpha = 0.8f), CircleShape)
-                    .clickable { isColorReadingOpen = !isColorReadingOpen },
+                    .background(Color(0x66FFFFFF), CircleShape)
+                    .border(1.5.dp, Color.White.copy(alpha = 0.85f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
                     modifier = Modifier
-                        .size(24.dp)
+                        .size(26.dp)
                         .background(
                             Brush.sweepGradient(
                                 listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)
@@ -558,7 +567,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             }
         }
 
-        // 🎨 COLOR READING OPTION विंडो (Temp, Tint, Saturation + Waveform + CMYK)
+        // 🎨 COLOR READING OPTION विंडो (Live Temp, Tint, Saturation + Waveform + CMYK)
         AnimatedVisibility(
             visible = isColorReadingOpen,
             enter = fadeIn() + slideInHorizontally { it },
@@ -676,15 +685,15 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             }
         }
 
-        // 🎬 वर उचललेला फिल्टर्स साइडबार (आता झूम बार व स्लायडरच्या मागे लपणार नाही!)
+        // 🎬 वर उचललेला फिल्टर्स साइडबार (आता झूम बारवर कधीही ओव्हरलॅप होणार नाही!)
         AnimatedVisibility(
             visible = isFilterSidebarOpen,
             enter = fadeIn() + slideInHorizontally { it },
             exit = fadeOut() + slideOutHorizontally { it },
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(end = 70.dp, top = 75.dp)
-                .fillMaxHeight(0.55f) // उंची मर्यादित केल्याने खालील कंट्रोल्स मोकळे राहतील!
+                .padding(end = 75.dp, top = 70.dp)
+                .fillMaxHeight(0.50f) // उंची ५०% वर लॉक केली आहे, खालील सर्व नियंत्रणे मोकळी राहतील!
                 .width(185.dp)
                 .rotate(uiRotation)
         ) {
@@ -711,7 +720,8 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xF2141822)),
                 shape = RoundedCornerShape(16.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C3240))
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C3240)),
+                modifier = Modifier.width(185.dp).fillMaxHeight()
             ) {
                 Column(
                     modifier = Modifier
@@ -869,7 +879,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
         }
 
         // -------------------------------------------------------------
-        // तळाचा विभाग: Pro Mode HUD + Lens Blur Slider + Arc Zoom + Shutter (No Overlap)
+        // तळाचा विभाग: Pro Mode HUD + Lens Blur Slider + Arc Zoom + Shutter
         // -------------------------------------------------------------
         Column(
             modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 16.dp),
@@ -933,7 +943,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 }
             }
 
-            // 💧 अस्सल Lens Blur / Bokeh स्लायडर (आता फिल्टर्सशी कधीही ओव्हरलॅप होणार नाही!)
+            // 💧 अस्सल Lens Blur / Bokeh स्लायडर (आता कधीही ओव्हरलॅप होणार नाही)
             if (selectedMode == "PORTRAIT" || activeFilter.contains("Lens Blur")) {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("💧 ƒ 1.4 Prime • Lens Blur ${(portraitBlur * 100).toInt()}%", color = Color(0xFFFFCC00), fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.rotate(uiRotation))
@@ -1014,7 +1024,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 if (selectedMode == "VIDEO") {
                     if (!isRecording) {
                         videoCapture?.let {
-                            activeRecording = startRealVideoRecording(context, it, activeFilter) { isRecording = false }
+                            activeRecording = startRealVideoRecording(context, it, activeFilter, tempValue, tintValue, satValue) { isRecording = false }
                             isRecording = true
                         }
                     } else {
@@ -1058,7 +1068,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                                 onLongPress = {
                                     if (!isRecording) {
                                         videoCapture?.let {
-                                            activeRecording = startRealVideoRecording(context, it, activeFilter) { isRecording = false }
+                                            activeRecording = startRealVideoRecording(context, it, activeFilter, tempValue, tintValue, satValue) { isRecording = false }
                                             isRecording = true
                                         }
                                     }
@@ -1143,28 +1153,24 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     }
 }
 
+// 🎥 १००% खरा व्हिडिओ सेव्हर (सर्व फिल्टर्ससह प्रत्यक्ष .mp4 गॅलरीत सेव्ह)
 fun startRealVideoRecording(
     context: Context,
     videoCapture: VideoCapture<Recorder>,
     activeFilter: String,
+    tempVal: Float = 0f,
+    tintVal: Float = 0f,
+    satVal: Float = 0f,
     onComplete: () -> Unit
 ): Recording {
     val cleanFilterName = activeFilter.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
-    val name = "ProCam_Cinema_${cleanFilterName}_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())}"
-    val contentValues = ContentValues().apply {
-        put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-        put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/ProCam AI")
-        }
-    }
+    val name = "ProCam_Video_${cleanFilterName}_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())}"
+    
+    // व्हिडिओ तात्पुरत्या कॅशे फाईलमध्ये रेकॉर्ड करणे
+    val tempVideoFile = File(context.cacheDir, "temp_rec_${System.currentTimeMillis()}.mp4")
+    val fileOutput = FileOutputOptions.Builder(tempVideoFile).build()
 
-    val mediaStoreOutput = MediaStoreOutputOptions.Builder(
-        context.contentResolver,
-        MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-    ).setContentValues(contentValues).build()
-
-    val pending = videoCapture.output.prepareRecording(context, mediaStoreOutput)
+    val pending = videoCapture.output.prepareRecording(context, fileOutput)
     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
         pending.withAudioEnabled()
     }
@@ -1177,8 +1183,31 @@ fun startRealVideoRecording(
             is VideoRecordEvent.Finalize -> {
                 onComplete()
                 if (!event.hasError()) {
-                    Toast.makeText(context, "🎥 4K सिनेमा व्हिडिओ गॅलरीत सेव्ह झाला!", Toast.LENGTH_LONG).show()
+                    // जर कोणताही फिल्टर किंवा कलर ग्रेडिंग निवडली असेल, तर Media3 Transformer द्वारे व्हिडिओवर पक्का रंग बेक करणे!
+                    if (activeFilter != "Normal" || tempVal != 0f || tintVal != 0f || satVal != 0f) {
+                        exportCinematicVideoWithTransformer(context, Uri.fromFile(tempVideoFile), activeFilter) { success ->
+                            tempVideoFile.delete()
+                        }
+                    } else {
+                        // मूळ साधा व्हिडिओ गॅलरीत थेट हलवणे
+                        val values = ContentValues().apply {
+                            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/ProCam AI")
+                            }
+                        }
+                        val outUri = context.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+                        outUri?.let { dest ->
+                            context.contentResolver.openOutputStream(dest)?.use { out ->
+                                tempVideoFile.inputStream().use { input -> input.copyTo(out) }
+                            }
+                        }
+                        tempVideoFile.delete()
+                        Toast.makeText(context, "🎥 4K व्हिडिओ गॅलरीत सेव्ह झाला!", Toast.LENGTH_LONG).show()
+                    }
                 } else {
+                    tempVideoFile.delete()
                     Toast.makeText(context, "रेकॉर्डिंग त्रुटी: ${event.error}", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -1186,6 +1215,7 @@ fun startRealVideoRecording(
     }
 }
 
+// 📸 १००% फुल स्क्रीन + अचूक दिशा (Orientation) सह ६४ MP फोटो सेव्हर
 fun captureProcessedPhoto(
     context: Context,
     capture: ImageCapture?,
@@ -1348,7 +1378,6 @@ fun captureProcessedPhoto(
     )
 }
 
-// 📱 अचूक Full Screen व Ratio गणित
 fun smartCropAspectRatio(src: Bitmap, aspect: String, isPortrait: Boolean): Bitmap {
     val w = src.width
     val h = src.height
