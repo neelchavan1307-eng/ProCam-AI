@@ -509,8 +509,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 drawLine(c, Offset(0f, h * 2 / 3), Offset(w, h * 2 / 3), 1.dp.toPx())
             }
         }
-
-        // 🔄 हार्डवेअर Accelerometer शी जोडलेली खरी फिरणारी व हिरवी होणारी लेव्हल लाईन!
+// 🔄 हार्डवेअर Accelerometer शी जोडलेली खरी फिरणारी व हिरवी होणारी लेव्हल लाईन!
         if (isLevelOn) {
             val isPerfectLevel = abs(phoneTiltAngle) < 1.2f
             val lineColor = if (isPerfectLevel) Color(0xFF34C759) else Color(0xFFFFCC00)
@@ -525,12 +524,15 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 drawLine(Color(0x55FFFFFF), Offset(midX - 70.dp.toPx(), midY), Offset(midX - 30.dp.toPx(), midY), 1.5.dp.toPx())
                 drawLine(Color(0x55FFFFFF), Offset(midX + 30.dp.toPx(), midY), Offset(midX + 70.dp.toPx(), midY), 1.5.dp.toPx())
 
-                // 🔄 प्रत्यक्ष सेन्सरनुसार फिरणारी लेव्हल लाईन (गणितीय रोटेशन - Zero Error)
-                val rad = Math.toRadians((-phoneTiltAngle).toDouble())
-                val len = 85.dp.toPx()
-                val cosA = cos(rad).toFloat()
-                val sinA = sin(rad).toFloat()
-                drawLine(lineColor, Offset(midX - len * cosA, midY - len * sinA), Offset(midX + len * cosA, midY + len * sinA), 2.5.dp.toPx())
+                // 🔄 अचूक गणितीय रोटेशन (No Overload Ambiguity)
+                val angleRad: Double = Math.toRadians((-phoneTiltAngle).toDouble())
+                val cosVal: Float = Math.cos(angleRad).toFloat()
+                val sinVal: Float = Math.sin(angleRad).toFloat()
+                val lineLength: Float = 85.dp.toPx()
+                val xOff: Float = lineLength * cosVal
+                val yOff: Float = lineLength * sinVal
+
+                drawLine(lineColor, Offset(midX - xOff, midY - yOff), Offset(midX + xOff, midY + yOff), 3.dp.toPx())
                 drawCircle(lineColor, radius = 3.5.dp.toPx(), center = Offset(midX, midY))
             }
         }
