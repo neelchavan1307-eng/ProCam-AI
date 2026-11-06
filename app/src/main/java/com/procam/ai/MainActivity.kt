@@ -1533,18 +1533,21 @@ fun captureProcessedPhoto(
     )
 }
 
-// 💎 ६४ MP Crystal Clarity & De-Haze Engine
+// 💎 ६४ MP Crystal Clarity & De-Haze Engine (Zero Error)
 fun apply64MPCrystalClarity(src: Bitmap): Bitmap {
     val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(res)
-    // De-Haze & Contrast Tuning (पांढरटपणा काढून शेतातले रंग रसरशीत करणे)
+    val canvas = android.graphics.Canvas(res)
     val cm = android.graphics.ColorMatrix(floatArrayOf(
         1.08f, 0f, 0f, 0f, -4f,
         0f, 1.08f, 0f, 0f, -4f,
         0f, 0f, 1.08f, 0f, -4f,
         0f, 0f, 0f, 1f, 0f
     ))
-    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
+    val p = android.graphics.Paint().apply { 
+        colorFilter = android.graphics.ColorMatrixColorFilter(cm)
+        isAntiAlias = true 
+    }
+    canvas.drawBitmap(src, 0f, 0f, p)
     return res
 }
 
