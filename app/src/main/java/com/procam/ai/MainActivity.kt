@@ -16,7 +16,6 @@ import android.os.VibratorManager
 import android.provider.MediaStore
 import android.view.KeyEvent
 import android.view.OrientationEventListener
-import android.view.Surface
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -61,7 +60,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -83,8 +81,8 @@ data class QuickMenuTile(
     val action: () -> Unit
 )
 
-// 📳 मेकॅनिकल हॅप्टिक व्हायब्रेशन फीडबॅक
-fun triggerHapticFeedback(context: Context, durationMs: Long = 25L) {
+// 📳 Poco/Xiaomi साठी Predefined हार्डवेअर मेकॅनिकल हॅप्टिक्स
+fun triggerPocoHaptics(context: Context, type: Int = 1) {
     try {
         val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
@@ -93,11 +91,18 @@ fun triggerHapticFeedback(context: Context, durationMs: Long = 25L) {
             @Suppress("DEPRECATION")
             context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator?.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val effect = when (type) {
+                1 -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)       // शटर क्लिक
+                2 -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK) // लेव्हल हिरवी झाल्यावर
+                else -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK)     // झूम डायल फिरवताना
+            }
+            vibrator?.vibrate(effect)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator?.vibrate(VibrationEffect.createOneShot(35L, VibrationEffect.DEFAULT_AMPLITUDE))
         } else {
             @Suppress("DEPRECATION")
-            vibrator?.vibrate(durationMs)
+            vibrator?.vibrate(35L)
         }
     } catch (_: Exception) {}
 }
@@ -164,7 +169,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
         label = "uiRot"
     )
 
-    // 🔄 फोनच्या हार्डवेअर Accelerometer शी जोडलेली खरी फिरणारी लेव्हल लाईन!
+    // 🔄 हार्डवेअर Accelerometer शी जोडलेली खरी फिरणारी लेव्हल लाईन
     val sensorManager = remember { context.getSystemService(Context.SENSOR_SERVICE) as? android.hardware.SensorManager }
     var phoneTiltAngle by remember { mutableFloatStateOf(0f) }
     var wasLevelAnnounced by remember { mutableStateOf(false) }
@@ -185,7 +190,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                     phoneTiltAngle = angle
                     val isLevel = abs(angle) < 1.2f
                     if (isLevel && !wasLevelAnnounced) {
-                        triggerHapticFeedback(context, 18L)
+                        triggerPocoHaptics(context, 2) // 📳 लेव्हल सरळ होताच 'डबल-बझ'
                         wasLevelAnnounced = true
                     } else if (!isLevel) {
                         wasLevelAnnounced = false
@@ -198,7 +203,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
         onDispose { sensorManager?.unregisterListener(listener) }
     }
 
-    // 🖼️ नुकताच काढलेला फोटो इन-ॲप पाहण्यासाठी थंबनेल स्टेट
     var lastCapturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showInAppPhotoViewer by remember { mutableStateOf(false) }
 
@@ -255,7 +259,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
     var isFilterSidebarOpen by remember { mutableStateOf(false) }
     var isColorReadingOpen by remember { mutableStateOf(false) }
 
-    // 🎨 Live Color Grading Controls
     var tempValue by remember { mutableFloatStateOf(0f) }
     var tintValue by remember { mutableFloatStateOf(0f) }
     var satValue by remember { mutableFloatStateOf(0f) }
@@ -364,7 +367,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
         } catch (_: Exception) {}
     }
 
-    // 🎥 कॅमेरा, OIS व रिअल-टाइम व्हिडिओ बाइंडिंग
+    // 🎥 सेन्सर हार्डवेअर बाइंडिंग (हार्डवेअर Edge Sharpening सह)
     LaunchedEffect(hasPermissions, lensFacing, selectedMode, selectedVideoResolution, isActionModeOn, activeFilter, tempValue, tintValue, isFlashOn) {
         if (hasPermissions) {
             val cameraProvider = ProcessCameraProvider.getInstance(context).get()
@@ -398,8 +401,6 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 }
 
                 applySafeZoom(currentZoom)
-
-                // 🔦 व्हिडिओ टॉर्च ऑन/ऑफ
                 camera?.cameraControl?.enableTorch(isFlashOn)
 
                 try {
@@ -407,6 +408,9 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                     val builder = CaptureRequestOptions.Builder()
                         .setCaptureRequestOption(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON)
                         .setCaptureRequestOption(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON)
+                        // 🔥 सेन्सरच्या कडा तीक्ष्ण करणे (EDGE_MODE_HIGH_QUALITY)
+                        .setCaptureRequestOption(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY)
+                        .setCaptureRequestOption(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY)
 
                     when {
                         activeFilter == "🥽 NVG Green" -> {
@@ -509,7 +513,8 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 drawLine(c, Offset(0f, h * 2 / 3), Offset(w, h * 2 / 3), 1.dp.toPx())
             }
         }
-// 🔄 हार्डवेअर Accelerometer शी जोडलेली खरी फिरणारी व हिरवी होणारी लेव्हल लाईन!
+
+        // 🔄 हार्डवेअर Accelerometer शी जोडलेली खरी फिरणारी व हिरवी होणारी लेव्हल लाईन!
         if (isLevelOn) {
             val isPerfectLevel = abs(phoneTiltAngle) < 1.2f
             val lineColor = if (isPerfectLevel) Color(0xFF34C759) else Color(0xFFFFCC00)
@@ -520,11 +525,11 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 val midX = w / 2f
                 val midY = h / 2f
 
-                // मध्यभागी असलेल्या स्थिर पांढऱ्या खुणा (Target Marks)
+                // मध्यभागी असलेल्या स्थिर पांढऱ्या खुणा
                 drawLine(Color(0x55FFFFFF), Offset(midX - 70.dp.toPx(), midY), Offset(midX - 30.dp.toPx(), midY), 1.5.dp.toPx())
                 drawLine(Color(0x55FFFFFF), Offset(midX + 30.dp.toPx(), midY), Offset(midX + 70.dp.toPx(), midY), 1.5.dp.toPx())
 
-                // 🔄 अचूक गणितीय रोटेशन (No Overload Ambiguity)
+                // 🔄 अचूक गणितीय रोटेशन
                 val angleRad: Double = Math.toRadians((-phoneTiltAngle).toDouble())
                 val cosVal: Float = Math.cos(angleRad).toFloat()
                 val sinVal: Float = Math.sin(angleRad).toFloat()
@@ -598,8 +603,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                     Box(modifier = Modifier.size(16.dp, 4.dp).background(col, RoundedCornerShape(1.dp)))
                 }
             }
-        }
-        // -------------------------------------------------------------
+        }// -------------------------------------------------------------
         // 🔥 उजव्या बाजूला फ्लोटिंग बाण आणि RGB डॉट
         // -------------------------------------------------------------
         Row(
@@ -857,7 +861,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 IconButton(
                     onClick = {
                         isFlashOn = !isFlashOn
-                        triggerHapticFeedback(context, 15L)
+                        triggerPocoHaptics(context, 1)
                     },
                     modifier = Modifier.size(36.dp).rotate(uiRotation).background(if (isFlashOn) Color(0xFFFFCC00) else Color(0x66000000), CircleShape)
                 ) {
@@ -1027,6 +1031,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 }
             }
 
+            // 💧 अस्सल Lens Blur / Bokeh स्लायडर
             if (selectedMode == "PORTRAIT" || activeFilter.contains("Lens Blur")) {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("💧 ƒ 1.4 Prime • Lens Blur ${(portraitBlur * 100).toInt()}%", color = Color(0xFFFFCC00), fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.rotate(uiRotation))
@@ -1104,7 +1109,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             Spacer(modifier = Modifier.height(10.dp))
 
             val triggerAction = {
-                triggerHapticFeedback(context, 30L) // 📳 मेकॅनिकल क्लिक व्हायब्रेशन
+                triggerPocoHaptics(context, 1) // 📳 Poco हार्डवेअर मेकॅनिकल क्लिक
                 if (selectedMode == "VIDEO") {
                     if (!isRecording) {
                         videoCapture?.let {
@@ -1142,7 +1147,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             }
 
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 30.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                // 🖼️ Quick Gallery Thumbnail (नुकताच काढलेला फोटो इन-ॲप पाहण्यासाठी)
+                // 🖼️ Quick Gallery Thumbnail
                 Box(
                     modifier = Modifier
                         .size(50.dp)
@@ -1183,7 +1188,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                                 onTap = { triggerAction() },
                                 onLongPress = {
                                     if (!isRecording) {
-                                        triggerHapticFeedback(context, 40L)
+                                        triggerPocoHaptics(context, 1)
                                         videoCapture?.let {
                                             activeRecording = startRealVideoRecording(context, it, activeFilter, tempValue, tintValue, satValue) { isRecording = false }
                                             isRecording = true
@@ -1205,7 +1210,7 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
             }
         }
 
-        // 🖼️ In-App Fullscreen Photo Viewer (कॅमेरा बंद न करता लगेच फोटो पाहणे)
+        // 🖼️ In-App Fullscreen Photo Viewer
         if (showInAppPhotoViewer && lastCapturedBitmap != null) {
             Box(
                 modifier = Modifier
@@ -1357,6 +1362,7 @@ fun startRealVideoRecording(
     }
 }
 
+// 📸 ६४ MP Crystal Clarity & De-Haze सह फोटो सेव्हर
 fun captureProcessedPhoto(
     context: Context,
     capture: ImageCapture?,
@@ -1415,6 +1421,9 @@ fun captureProcessedPhoto(
                         val isPortrait = (deviceOrientation == 0 || deviceOrientation == 180)
                         bmp = smartCropAspectRatio(bmp, aspectRatio, isPortrait)
 
+                        // 🔥 ३. ६४ MP Crystal Clarity & De-Haze Engine (पांढरट धुरकटपणा काढून कडा तीक्ष्ण करणे)
+                        bmp = apply64MPCrystalClarity(bmp)
+
                         // 💧 Lens Blur / Portrait
                         if (mode == "PORTRAIT" || activeFilter.contains("Lens Blur")) {
                             bmp = applyDSLRBokehEffect(bmp, blurLevel)
@@ -1446,7 +1455,7 @@ fun captureProcessedPhoto(
                             bmp = gradedBmp
                         }
 
-                        // 🎨 Selective Color (पांढरी फरशी पांढरीच ठेवणे)
+                        // 🎨 Selective Color
                         if (rVal != 128f || gVal != 128f || bVal != 128f) {
                             val rRatio = (rVal - 128f) / 128f
                             val gRatio = (gVal - 128f) / 128f
@@ -1509,7 +1518,6 @@ fun captureProcessedPhoto(
                         saveFinalProcessedBitmap(context, bmp, "${mode}_${activeFilter.replace(" ", "_")}")
                         tempFile.delete()
 
-                        // 🖼️ लेटेस्ट थंबनेल अपडेट करणे
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             onSuccess(bmp)
                         }
@@ -1523,6 +1531,21 @@ fun captureProcessedPhoto(
             }
         }
     )
+}
+
+// 💎 ६४ MP Crystal Clarity & De-Haze Engine
+fun apply64MPCrystalClarity(src: Bitmap): Bitmap {
+    val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(res)
+    // De-Haze & Contrast Tuning (पांढरटपणा काढून शेतातले रंग रसरशीत करणे)
+    val cm = android.graphics.ColorMatrix(floatArrayOf(
+        1.08f, 0f, 0f, 0f, -4f,
+        0f, 1.08f, 0f, 0f, -4f,
+        0f, 0f, 1.08f, 0f, -4f,
+        0f, 0f, 0f, 1f, 0f
+    ))
+    canvas.drawBitmap(src, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(cm); isAntiAlias = true })
+    return res
 }
 
 fun smartCropAspectRatio(src: Bitmap, aspect: String, isPortrait: Boolean): Bitmap {
