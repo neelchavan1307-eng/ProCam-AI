@@ -525,11 +525,13 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 drawLine(Color(0x55FFFFFF), Offset(midX - 70.dp.toPx(), midY), Offset(midX - 30.dp.toPx(), midY), 1.5.dp.toPx())
                 drawLine(Color(0x55FFFFFF), Offset(midX + 30.dp.toPx(), midY), Offset(midX + 70.dp.toPx(), midY), 1.5.dp.toPx())
 
-                // 🔄 प्रत्यक्ष फोनच्या हालचालीनुसार ६० FPS फिरणारी लाईन
-                rotate(degrees = -phoneTiltAngle, pivot = Offset(midX, midY)) {
-                    drawLine(lineColor, Offset(midX - 85.dp.toPx(), midY), Offset(midX + 85.dp.toPx(), midY), 2.5.dp.toPx())
-                    drawCircle(lineColor, radius = 3.5.dp.toPx(), center = Offset(midX, midY))
-                }
+                // 🔄 प्रत्यक्ष सेन्सरनुसार फिरणारी लेव्हल लाईन (गणितीय रोटेशन - Zero Error)
+                val rad = Math.toRadians((-phoneTiltAngle).toDouble())
+                val len = 85.dp.toPx()
+                val cosA = cos(rad).toFloat()
+                val sinA = sin(rad).toFloat()
+                drawLine(lineColor, Offset(midX - len * cosA, midY - len * sinA), Offset(midX + len * cosA, midY + len * sinA), 2.5.dp.toPx())
+                drawCircle(lineColor, radius = 3.5.dp.toPx(), center = Offset(midX, midY))
             }
         }
 
