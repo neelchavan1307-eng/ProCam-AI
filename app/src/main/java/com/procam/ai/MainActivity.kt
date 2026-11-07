@@ -1684,6 +1684,147 @@ fun applyCrystalClarityV2(
             0, y - 1, w, 1
         )
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
+import kotlin.math.roundToInt
+
+fun applyCrystalClarityV2(
+    src: Bitmap,
+    mode: String = "Crystal"
+): Bitmap {
+
+    require(!src.isRecycled) {
+        "Source bitmap is recycled"
+    }
+
+    val w = src.width
+    val h = src.height
+
+    require(w > 0 && h > 0) {
+        "Invalid bitmap dimensions"
+    }
+
+    var sharpnessWeight = 0.55f
+
+    // ==================================
+    // 1. COLOR GRADING ENGINE
+    // ==================================
+
+    val cm = ColorMatrix()
+
+    when (mode) {
+
+        "Natural" -> {
+
+            // 🌿 NATURAL MODE
+
+            cm.setSaturation(1.0f)
+
+            val mat = ColorMatrix(
+                floatArrayOf(
+                    1.01f, 0f, 0f, 0f, 0f,
+                    0f, 1.01f, 0f, 0f, 0f,
+                    0f, 0f, 1.01f, 0f, 0f,
+                    0f, 0f, 0f, 1f, 0f
+                )
+            )
+
+            cm.postConcat(mat)
+
+            sharpnessWeight = 0.25f
+        }
+
+        "Ultra" -> {
+
+            // ⚡ ULTRA MODE
+
+            cm.setSaturation(1.08f)
+
+            val mat = ColorMatrix(
+                floatArrayOf(
+                    1.08f, 0f, 0f, 0f, -10f,
+                    0f, 1.08f, 0f, 0f, -10f,
+                    0f, 0f, 1.08f, 0f, -10f,
+                    0f, 0f, 0f, 1f, 0f
+                )
+            )
+
+            cm.postConcat(mat)
+
+            sharpnessWeight = 0.55f
+        }
+
+        else -> {
+
+            // 💎 CRYSTAL MODE
+
+            cm.setSaturation(1.15f)
+
+            val mat = ColorMatrix(
+                floatArrayOf(
+                    1.09f, 0f, 0f, 0f, -11f,
+                    0f, 1.09f, 0f, 0f, -11f,
+                    0f, 0f, 1.09f, 0f, -11f,
+                    0f, 0f, 0f, 1f, 0f
+                )
+            )
+
+            cm.postConcat(mat)
+
+            sharpnessWeight = 0.65f
+        }
+    }
+
+    // ==================================
+    // 2. COLOR FILTER
+    // ==================================
+
+    val output = Bitmap.createBitmap(
+        w,
+        h,
+        Bitmap.Config.ARGB_8888
+    )
+
+    val paint = Paint(
+        Paint.FILTER_BITMAP_FLAG
+    ).apply {
+
+        colorFilter = ColorMatrixColorFilter(cm)
+
+    }
+
+    Canvas(output).drawBitmap(
+        src,
+        0f,
+        0f,
+        paint
+    )
+
+    // ==================================
+    // 3. MEMORY OPTIMIZED SHARPENING
+    // ==================================
+
+    if (w < 3 || h < 3) {
+        return output
+    }
+
+    val topRow = IntArray(w)
+    val centerRow = IntArray(w)
+    val bottomRow = IntArray(w)
+
+    var pendingRow: IntArray? = null
+
+    for (y in 1 until h - 1) {
+
+        // Original neighboring rows read first.
+        output.getPixels(
+            topRow, 0, w,
+            0, y - 1, w, 1
+        )
+
         output.getPixels(
             centerRow, 0, w,
             0, y, w, 1
@@ -1779,7 +1920,6 @@ fun applyCrystalClarityV2(
 
     return output
 }
-
 fun smartCropAspectRatio(src: Bitmap, aspect: String, isPortrait: Boolean): Bitmap {
     val w = src.width
     val h = src.height
