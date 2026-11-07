@@ -1533,22 +1533,70 @@ fun captureProcessedPhoto(
     )
 }
 
-// 💎 ६४ MP Crystal Clarity & De-Haze Engine (Zero Error)
+// 💎 ६४ MP Crystal Clarity & Sharpness Engine (Sharp Details + Rich Deep Colors)
 fun apply64MPCrystalClarity(src: Bitmap): Bitmap {
-    val res = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
-    val canvas = android.graphics.Canvas(res)
-    val cm = android.graphics.ColorMatrix(floatArrayOf(
-        1.08f, 0f, 0f, 0f, -4f,
-        0f, 1.08f, 0f, 0f, -4f,
-        0f, 0f, 1.08f, 0f, -4f,
+    val w = src.width
+    val h = src.height
+
+    // १. हलकेसे गडद, खोल आणि रसरशीत रंग (De-Haze + Rich Saturation)
+    val gradedBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(gradedBmp)
+
+    val cm = android.graphics.ColorMatrix()
+    // रंगांची ताजी घनता (Rich Green Saturation)
+    cm.setSaturation(1.18f)
+
+    // फिकटपणा काढून हलकासा गडद आणि खोल टोन देणे (-8f Black Level)
+    val contrastMat = android.graphics.ColorMatrix(floatArrayOf(
+        1.12f, 0f, 0f, 0f, -8f,   // Red
+        0f, 1.14f, 0f, 0f, -6f,   // Rich Green (गडद हिरवागार)
+        0f, 0f, 1.12f, 0f, -8f,   // Blue
         0f, 0f, 0f, 1f, 0f
     ))
-    val p = android.graphics.Paint().apply { 
+    cm.postConcat(contrastMat)
+
+    val paint = android.graphics.Paint().apply {
         colorFilter = android.graphics.ColorMatrixColorFilter(cm)
-        isAntiAlias = true 
+        isAntiAlias = true
     }
-    canvas.drawBitmap(src, 0f, 0f, p)
-    return res
+    canvas.drawBitmap(src, 0f, 0f, paint)
+
+    // २. 3x3 Micro-Sharpening Kernel (पानांच्या शिरा व कडा अतिशय तीक्ष्ण करणे)
+    val output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val pixels = IntArray(w * h)
+    val outPixels = IntArray(w * h)
+    gradedBmp.getPixels(pixels, 0, w, 0, 0, w, h)
+
+    for (y in 1 until h - 1) {
+        val yOffset = y * w
+        for (x in 1 until w - 1) {
+            val idx = yOffset + x
+            val center = pixels[idx]
+            val up = pixels[idx - w]
+            val down = pixels[idx + w]
+            val left = pixels[idx - 1]
+            val right = pixels[idx + 1]
+
+            // Red Sharp
+            val rC = (center shr 16) and 0xFF
+            val rN = ((up shr 16) and 0xFF) + ((down shr 16) and 0xFF) + ((left shr 16) and 0xFF) + ((right shr 16) and 0xFF)
+            val r = (rC * 5 - rN).coerceIn(0, 255)
+
+            // Green Sharp
+            val gC = (center shr 8) and 0xFF
+            val gN = ((up shr 8) and 0xFF) + ((down shr 8) and 0xFF) + ((left shr 8) and 0xFF) + ((right shr 8) and 0xFF)
+            val g = (gC * 5 - gN).coerceIn(0, 255)
+
+            // Blue Sharp
+            val bC = center and 0xFF
+            val bN = (up and 0xFF) + (down and 0xFF) + (left and 0xFF) + (right and 0xFF)
+            val b = (bC * 5 - bN).coerceIn(0, 255)
+
+            outPixels[idx] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+        }
+    }
+    output.setPixels(outPixels, 0, w, 0, 0, w, h)
+    return output
 }
 
 fun smartCropAspectRatio(src: Bitmap, aspect: String, isPortrait: Boolean): Bitmap {
