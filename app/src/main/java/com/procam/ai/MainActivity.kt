@@ -1588,7 +1588,7 @@ fun applyQualityModeEngine(src: Bitmap, mode: String): Bitmap {
         }
         else -> {
             // 💎 Crystal (डीफॉल्ट): 0.65f शार्पनेस + रसरशीत व हलकेसे गडद रंग
-            cm.setSaturation(1.16f)
+            cm.setSaturation(1.25f)
             val mat = android.graphics.ColorMatrix(floatArrayOf(
                 1.10f, 0f, 0f, 0f, -5f,
                 0f, 1.10f, 0f, 0f, -4f,
