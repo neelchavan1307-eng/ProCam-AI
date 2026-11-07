@@ -970,4 +970,703 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Center
                                 ) {
-                                    Text(tile.title, color = if (tile.isActive) Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = and
+                                    Text(tile.title, color = if (tile.isActive) Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                    Text(tile.subtitle, color = Color.Gray, fontSize = 9.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (isCountingDown) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("$countdownValue", color = Color(0xFFFFCC00), fontSize = 95.sp, modifier = Modifier.rotate(uiRotation))
+            }
+        }
+
+        // -------------------------------------------------------------
+        // तळाचा विभाग: Pro Mode HUD + Lens Blur Slider + Arc Zoom + Shutter
+        // -------------------------------------------------------------
+        Column(
+            modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (selectedMode == "PRO") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .rotate(uiRotation)
+                        .background(Color(0x99111622), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("ISO", color = Color.Gray, fontSize = 9.sp)
+                        Text(if (isIsoAuto) "AUTO" else "${manualIso.toInt()}", color = if (selectedProTab == "ISO") Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("S", color = Color.Gray, fontSize = 9.sp)
+                        Text(if (isShutterAuto) "AUTO" else "1/${shutterDenom.toInt()}", color = if (selectedProTab == "S") Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("EV", color = Color.Gray, fontSize = 9.sp)
+                        Text(String.format("%+.1f", evValue), color = if (selectedProTab == "EV") Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("WB", color = Color.Gray, fontSize = 9.sp)
+                        Text(if (isWbAuto) "AUTO" else "${wbKelvin.toInt()}K", color = if (selectedProTab == "WB") Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("FOCUS", color = Color.Gray, fontSize = 9.sp)
+                        Text(if (isFocusAuto) "AUTO" else "MF", color = if (selectedProTab == "FOCUS") Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    }
+                }
+
+                Box(modifier = Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 24.dp)) {
+                    when (selectedProTab) {
+                        "ISO" -> Slider(value = manualIso, onValueChange = { manualIso = it; isIsoAuto = false }, valueRange = 50f..3200f, colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00)))
+                        "S" -> Slider(value = shutterDenom, onValueChange = { shutterDenom = it; isShutterAuto = false }, valueRange = 4f..4000f, colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00)))
+                        "EV" -> Slider(value = evValue, onValueChange = { evValue = it; exposureComp = it }, valueRange = -2f..2f, steps = 8, colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00)))
+                        "WB" -> Slider(value = wbKelvin, onValueChange = { wbKelvin = it; isWbAuto = false }, valueRange = 2500f..7500f, colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00)))
+                        "FOCUS" -> Slider(value = manualFocusDistance, onValueChange = { manualFocusDistance = it; isFocusAuto = false }, valueRange = 0f..10f, colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00)))
+                    }
+                }
+
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    listOf("ISO", "S", "EV", "WB", "FOCUS").forEach { tab ->
+                        val isSel = selectedProTab == tab
+                        Button(
+                            onClick = { selectedProTab = tab },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isSel) Color(0xFFFFCC00) else Color(0xFF1E2433)),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.rotate(uiRotation)
+                        ) {
+                            Text(tab, color = if (isSel) Color.Black else Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            if (selectedMode == "PORTRAIT" || activeFilter.contains("Lens Blur")) {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("💧 ƒ 1.4 Prime • Lens Blur ${(portraitBlur * 100).toInt()}%", color = Color(0xFFFFCC00), fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.rotate(uiRotation))
+                    Slider(value = portraitBlur, onValueChange = { portraitBlur = it }, valueRange = 0.2f..1.0f, colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFFCC00)))
+                }
+            }
+
+            if (isZoomDialVisible) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 6.dp)) {
+                    Text(text = String.format("%.1fx", currentZoom), color = Color(0xFFFFCC00), fontSize = 18.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.rotate(uiRotation))
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f)
+                            .height(50.dp)
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    val delta = dragAmount.x / 40f
+                                    applySafeZoom((currentZoom + delta).coerceIn(0.6f, 10f))
+                                }
+                            }
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val w = size.width; val h = size.height
+                            drawArc(Color(0x66FFFFFF), 180f, 180f, false, Offset(0f, -h), Size(w, h * 2), style = Stroke(2.dp.toPx()))
+                            listOf(0.6f, 1f, 2f, 4f, 6f, 8f, 10f).forEach { mark ->
+                                val x = w * ((mark - 0.6f) / (10f - 0.6f))
+                                val isNear = abs(currentZoom - mark) < 0.3f
+                                drawLine(if (isNear) Color(0xFFFFCC00) else Color.White, Offset(x, h * 0.4f), Offset(x, h * 0.85f), if (isNear) 3.dp.toPx() else 1.5.dp.toPx())
+                            }
+                        }
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.background(Color(0x66000000), RoundedCornerShape(24.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf(0.6f to ".6", 1f to "1", 2f to "2", 5f to "5", 10f to "10").forEach { (z, label) ->
+                    val isSel = abs(currentZoom - z) < 0.15f
+                    Box(
+                        modifier = Modifier.size(32.dp).rotate(uiRotation).background(if (isSel) Color(0x44FFFFFF) else Color.Transparent, CircleShape).clickable { applySafeZoom(z); isZoomDialVisible = false },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(label, color = if (isSel) Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = if (isSel) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal)
+                    }
+                }
+                Box(
+                    modifier = Modifier.rotate(uiRotation).background(if (isZoomDialVisible) Color(0xFFFFCC00) else Color(0x33FFFFFF), RoundedCornerShape(12.dp)).clickable { isZoomDialVisible = !isZoomDialVisible }.padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text("DIAL", color = if (isZoomDialVisible) Color.Black else Color.White, fontSize = 10.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val cleanModes = listOf("PHOTO", "VIDEO", "PORTRAIT", "NIGHT", "PRO")
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                cleanModes.forEach { mode ->
+                    val isSel = selectedMode == mode
+                    Text(
+                        text = mode,
+                        color = if (isSel) Color(0xFFFFCC00) else Color.White,
+                        fontSize = if (isSel) 14.sp else 12.sp,
+                        fontWeight = if (isSel) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
+                        modifier = Modifier.rotate(uiRotation).clickable { selectedMode = mode }.padding(vertical = 4.dp, horizontal = 6.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            val triggerAction = {
+                triggerPocoHaptics(context, 1)
+                if (selectedMode == "VIDEO") {
+                    if (!isRecording) {
+                        videoCapture?.let {
+                            activeRecording = startRealVideoRecording(context, it, activeFilter, tempValue, tintValue, satValue) { isRecording = false }
+                            isRecording = true
+                        }
+                    } else {
+                        activeRecording?.stop()
+                        activeRecording = null
+                        isRecording = false
+                    }
+                } else {
+                    if (timerDuration > 0) {
+                        scope.launch {
+                            isCountingDown = true
+                            for (i in timerDuration downTo 1) {
+                                countdownValue = i
+                                delay(1000)
+                            }
+                            isCountingDown = false
+                            captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, qualityMode, portraitBlur, isWatermarkOn, selectedAspect, evValue, redValue, greenValue, blueValue, tempValue, tintValue, satValue, deviceOrientation) { capturedBmp ->
+                                lastCapturedBitmap = capturedBmp
+                            }
+                        }
+                    } else {
+                        captureProcessedPhoto(context, imageCapture, selectedMode, activeFilter, qualityMode, portraitBlur, isWatermarkOn, selectedAspect, evValue, redValue, greenValue, blueValue, tempValue, tintValue, satValue, deviceOrientation) { capturedBmp ->
+                            lastCapturedBitmap = capturedBmp
+                        }
+                    }
+                }
+            }
+
+            LaunchedEffect(Unit) {
+                registerVolumeTrigger { triggerAction() }
+            }
+
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 30.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .rotate(uiRotation)
+                        .background(Color(0x55000000), CircleShape)
+                        .border(2.dp, if (lastCapturedBitmap != null) Color(0xFFFFCC00) else Color(0x66FFFFFF), CircleShape)
+                        .clip(CircleShape)
+                        .clickable {
+                            if (lastCapturedBitmap != null) {
+                                showInAppPhotoViewer = true
+                            } else {
+                                Toast.makeText(context, "अजून फोटो काढलेला नाही!", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (lastCapturedBitmap != null) {
+                        Image(
+                            bitmap = lastCapturedBitmap!!.asImageBitmap(),
+                            contentDescription = "Recent Shot",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text("🖼️", fontSize = 18.sp)
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(76.dp)
+                        .border(4.dp, Color.White, CircleShape)
+                        .padding(5.dp)
+                        .background(if (selectedMode == "VIDEO" || isRecording) Color.Red else Color.White, CircleShape)
+                        .pointerInput(selectedMode) {
+                            detectTapGestures(
+                                onTap = { triggerAction() },
+                                onLongPress = {
+                                    if (!isRecording) {
+                                        triggerPocoHaptics(context, 1)
+                                        videoCapture?.let {
+                                            activeRecording = startRealVideoRecording(context, it, activeFilter, tempValue, tintValue, satValue) { isRecording = false }
+                                            isRecording = true
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                )
+
+                Box(
+                    modifier = Modifier.size(45.dp).rotate(uiRotation).background(Color(0x66000000), CircleShape).clickable {
+                        lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
+                    },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("🔄", fontSize = 20.sp)
+                }
+            }
+        }
+
+        if (showInAppPhotoViewer && lastCapturedBitmap != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.95f))
+                    .clickable { showInAppPhotoViewer = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    bitmap = lastCapturedBitmap!!.asImageBitmap(),
+                    contentDescription = "Full Preview",
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    contentScale = ContentScale.Fit
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(24.dp)
+                        .size(40.dp)
+                        .background(Color(0x88000000), CircleShape)
+                        .clickable { showInAppPhotoViewer = false },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("✕", color = Color.White, fontSize = 20.sp)
+                }
+            }
+        }
+
+        if (isAiRestoring) {
+            Box(modifier = Modifier.fillMaxSize().background(Color(0xCC000000)), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                    CircularProgressIndicator(color = Color(0xFFFFCC00), modifier = Modifier.size(50.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("⚡ Real-ESRGAN 4K Super-Resolution सुरू आहे...", color = Color.White, fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    Text("क्रेन डिस्प्ले, आकडे, मजकूर व चेहरे ४ पट शार्प होत आहेत", color = Color.Gray, fontSize = 12.sp)
+                }
+            }
+        }
+
+        if (showAiResultDialog && aiRestoredBmp != null) {
+            AlertDialog(
+                onDismissRequest = { showAiResultDialog = false },
+                confirmButton = {
+                    Button(onClick = { showAiResultDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCC00))) {
+                        Text("पूर्ण (गॅलरीत सेव्ह झाला)", color = Color.Black)
+                    }
+                },
+                title = { Text("🎉 4K Super-Resolution यशस्वी!", color = Color.White) },
+                text = {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Image(bitmap = aiRestoredBmp!!.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Fit)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("✅ 4K सुपर-शार्प फोटो 'Pictures/ProCam AI' मध्ये सेव्ह झाला!", color = Color(0xFF4CAF50), fontSize = 12.sp)
+                    }
+                },
+                containerColor = Color(0xFF1E2433)
+            )
+        }
+
+        if (showTokenDialog) {
+            AlertDialog(
+                onDismissRequest = { showTokenDialog = false },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            prefs.edit().putString("replicate_token", tokenInputText.trim()).apply()
+                            apiToken = tokenInputText.trim()
+                            showTokenDialog = false
+                            Toast.makeText(context, "🔑 AI Token सेव्ह झाले!", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFCC00))
+                    ) { Text("Save Token", color = Color.Black) }
+                },
+                title = { Text("🔑 Replicate AI Token", color = Color.White) },
+                text = {
+                    Column {
+                        Text("तुमचे 'r8_...' ने सुरू होणारे टोकन खाली पेस्ट करा:", color = Color.LightGray, fontSize = 13.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = tokenInputText,
+                            onValueChange = { tokenInputText = it },
+                            placeholder = { Text("r8_...", color = Color.Gray) },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                        )
+                    }
+                },
+                containerColor = Color(0xFF1E2433)
+            )
+        }
+    }
+}
+
+fun startRealVideoRecording(
+    context: Context,
+    videoCapture: VideoCapture<Recorder>,
+    activeFilter: String,
+    tempVal: Float = 0f,
+    tintVal: Float = 0f,
+    satVal: Float = 0f,
+    onComplete: () -> Unit
+): Recording {
+    val cleanFilterName = activeFilter.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+    val name = "ProCam_Video_${cleanFilterName}_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())}"
+    
+    val tempVideoFile = File(context.cacheDir, "temp_rec_${System.currentTimeMillis()}.mp4")
+    val fileOutput = FileOutputOptions.Builder(tempVideoFile).build()
+
+    val pending = videoCapture.output.prepareRecording(context, fileOutput)
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+        pending.withAudioEnabled()
+    }
+
+    return pending.start(ContextCompat.getMainExecutor(context)) { event ->
+        when (event) {
+            is VideoRecordEvent.Start -> {
+                Toast.makeText(context, "🔴 4K [ $activeFilter ] रेकॉर्डिंग सुरू!", Toast.LENGTH_SHORT).show()
+            }
+            is VideoRecordEvent.Finalize -> {
+                onComplete()
+                if (!event.hasError()) {
+                    if (activeFilter != "Normal" || tempVal != 0f || tintVal != 0f || satVal != 0f) {
+                        exportCinematicVideoWithTransformer(context, Uri.fromFile(tempVideoFile), activeFilter) { success ->
+                            tempVideoFile.delete()
+                        }
+                    } else {
+                        val values = ContentValues().apply {
+                            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/ProCam AI")
+                            }
+                        }
+                        val outUri = context.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+                        outUri?.let { dest ->
+                            context.contentResolver.openOutputStream(dest)?.use { out ->
+                                tempVideoFile.inputStream().use { input -> input.copyTo(out) }
+                            }
+                        }
+                        tempVideoFile.delete()
+                        Toast.makeText(context, "🎥 4K व्हिडिओ गॅलरीत सेव्ह झाला!", Toast.LENGTH_LONG).show()
+                    }
+                } else {
+                    tempVideoFile.delete()
+                    Toast.makeText(context, "रेकॉर्डिंग त्रुटी: ${event.error}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+}
+
+// 📸 3 Quality Modes (Natural, Crystal, Ultra) सह फोटो सेव्हर
+fun captureProcessedPhoto(
+    context: Context,
+    capture: ImageCapture?,
+    mode: String,
+    activeFilter: String,
+    qualityMode: String,
+    blurLevel: Float,
+    addWatermark: Boolean,
+    aspectRatio: String,
+    currentEV: Float,
+    rVal: Float = 128f,
+    gVal: Float = 128f,
+    bVal: Float = 128f,
+    tempVal: Float = 0f,
+    tintVal: Float = 0f,
+    satVal: Float = 0f,
+    deviceOrientation: Int = 0,
+    onSuccess: (Bitmap) -> Unit
+) {
+    val imageCapture = capture ?: return
+
+    val tempFile = java.io.File(context.cacheDir, "temp_capture_${System.currentTimeMillis()}.jpg")
+    val outputOptions = ImageCapture.OutputFileOptions.Builder(tempFile).build()
+
+    imageCapture.takePicture(
+        outputOptions,
+        ContextCompat.getMainExecutor(context),
+        object : ImageCapture.OnImageSavedCallback {
+            override fun onError(exc: ImageCaptureException) {
+                Toast.makeText(context, "फोटो त्रुटी: ${exc.message}", Toast.LENGTH_SHORT).show()
+            }
+
+            override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                Thread {
+                    try {
+                        val decodeOptions = BitmapFactory.Options().apply {
+                            inPreferredConfig = Bitmap.Config.ARGB_8888
+                        }
+                        var bmp = BitmapFactory.decodeFile(tempFile.absolutePath, decodeOptions) ?: return@Thread
+
+                        // १. अचूक दिशा
+                        try {
+                            val exif = android.media.ExifInterface(tempFile.absolutePath)
+                            val orient = exif.getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL)
+                            val matrix = android.graphics.Matrix()
+                            when (orient) {
+                                android.media.ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                                android.media.ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                                android.media.ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                            }
+                            if (!matrix.isIdentity) {
+                                bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
+                            }
+                        } catch (_: Exception) {}
+
+                        // २. फुल स्क्रीन क्रॉप
+                        val isPortrait = (deviceOrientation == 0 || deviceOrientation == 180)
+                        bmp = smartCropAspectRatio(bmp, aspectRatio, isPortrait)
+
+                        // 💎 ३. निवडलेल्या Quality Mode नुसार प्रक्रिया (Natural, Crystal, Ultra)
+                        bmp = applyQualityModeEngine(bmp, qualityMode)
+
+                        // 💧 Lens Blur / Portrait
+                        if (mode == "PORTRAIT" || activeFilter.contains("Lens Blur")) {
+                            bmp = applyDSLRBokehEffect(bmp, blurLevel)
+                        }
+                        if (mode == "NIGHT") bmp = processNightPhoto(bmp)
+
+                        // 🎨 Live Temp, Tint आणि Saturation
+                        if (tempVal != 0f || tintVal != 0f || satVal != 0f) {
+                            val cm = android.graphics.ColorMatrix()
+                            if (satVal != 0f) {
+                                val sMatrix = android.graphics.ColorMatrix()
+                                sMatrix.setSaturation((1f + satVal / 100f).coerceAtLeast(0f))
+                                cm.postConcat(sMatrix)
+                            }
+                            val rT = (tempVal * 0.22f) + (tintVal * 0.12f)
+                            val gT = -(tintVal * 0.22f)
+                            val bT = -(tempVal * 0.22f) + (tintVal * 0.12f)
+                            val tempTintMat = android.graphics.ColorMatrix(floatArrayOf(
+                                1f, 0f, 0f, 0f, rT,
+                                0f, 1f, 0f, 0f, gT,
+                                0f, 0f, 1f, 0f, bT,
+                                0f, 0f, 0f, 1f, 0f
+                            ))
+                            cm.postConcat(tempTintMat)
+
+                            val gradedBmp = Bitmap.createBitmap(bmp.width, bmp.height, Bitmap.Config.ARGB_8888)
+                            val gCanvas = android.graphics.Canvas(gradedBmp)
+                            gCanvas.drawBitmap(bmp, 0f, 0f, android.graphics.Paint().apply { colorFilter = android.graphics.ColorMatrixColorFilter(cm); isAntiAlias = true })
+                            bmp = gradedBmp
+                        }
+
+                        // 🎨 Selective Color (पांढरी फरशी पांढरीच ठेवणे)
+                        if (rVal != 128f || gVal != 128f || bVal != 128f) {
+                            val rRatio = (rVal - 128f) / 128f
+                            val gRatio = (gVal - 128f) / 128f
+                            val bRatio = (bVal - 128f) / 128f
+
+                            val w = bmp.width
+                            val h = bmp.height
+                            val pixels = IntArray(w * h)
+                            bmp.getPixels(pixels, 0, w, 0, 0, w, h)
+                            val hsv = FloatArray(3)
+
+                            for (i in pixels.indices) {
+                                val c = pixels[i]
+                                val r = (c shr 16) and 0xFF
+                                val g = (c shr 8) and 0xFF
+                                val b = c and 0xFF
+                                val maxC = maxOf(r, maxOf(g, b))
+                                val minC = minOf(r, minOf(g, b))
+                                if (maxC - minC < 35) continue
+
+                                android.graphics.Color.colorToHSV(c, hsv)
+                                val hue = hsv[0]
+                                if ((hue <= 30 || hue >= 330) && rRatio != 0f) {
+                                    hsv[1] = (hsv[1] * (1f + rRatio * 0.9f)).coerceIn(0f, 1f)
+                                    pixels[i] = android.graphics.Color.HSVToColor((c ushr 24), hsv)
+                                } else if (hue in 80f..160f && gRatio != 0f) {
+                                    hsv[1] = (hsv[1] * (1f + gRatio * 0.9f)).coerceIn(0f, 1f)
+                                    pixels[i] = android.graphics.Color.HSVToColor((c ushr 24), hsv)
+                                } else if (hue in 190f..260f && bRatio != 0f) {
+                                    hsv[1] = (hsv[1] * (1f + bRatio * 0.9f)).coerceIn(0f, 1f)
+                                    pixels[i] = android.graphics.Color.HSVToColor((c ushr 24), hsv)
+                                }
+                            }
+                            val outBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                            outBmp.setPixels(pixels, 0, w, 0, 0, w, h)
+                            bmp = outBmp
+                        }
+
+                        // सर्व फिल्टर्स
+                        bmp = when {
+                            activeFilter == "Normal" -> bmp
+                            activeFilter.contains("Lens Blur") -> bmp
+                            activeFilter.contains("NVG") -> applyMilitaryNightVision(bmp)
+                            activeFilter.contains("Color Night") -> applyColorNightVision(bmp)
+                            activeFilter.contains("Cinematic") -> applyMasterCinematic9in1(bmp)
+                            activeFilter.contains("Glow") -> applyVideoGlowHalo(bmp)
+                            activeFilter.contains("Retro") -> applyVintage70sFilter(bmp)
+                            activeFilter.contains("Night") || activeFilter.contains("Cyberpunk") -> applyCyberpunkNeonFilter(bmp)
+                            activeFilter.contains("4K") -> applyAIEnhancement(bmp)
+                            activeFilter == "Golden" -> applyGoldenHourGlow(bmp)
+                            activeFilter == "Noir" -> applyNoirFilter(bmp)
+                            activeFilter == "Astro" -> applyAstroPhoto(bmp)
+                            activeFilter == "Macro" -> applyMacroSharpen(bmp)
+                            activeFilter in listOf("Rich Contrast", "Vibrant", "Warm", "Cool") -> applyPhotographicStyle(bmp, activeFilter)
+                            else -> bmp
+                        }
+
+                        if (addWatermark) bmp = addBrandWatermark(bmp)
+
+                        saveFinalProcessedBitmap(context, bmp, "${mode}_${activeFilter.replace(" ", "_")}")
+                        tempFile.delete()
+
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            onSuccess(bmp)
+                        }
+
+                    } catch (e: Throwable) {
+                        (context as? android.app.Activity)?.runOnUiThread {
+                            Toast.makeText(context, "इफेक्ट त्रुटी: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }.start()
+            }
+        }
+    )
+}
+
+// 💎 ३ Quality Modes इंजिन (Natural, Crystal, Ultra)
+fun applyQualityModeEngine(src: Bitmap, mode: String): Bitmap {
+    val w = src.width
+    val h = src.height
+
+    // १. रंगांचे व कॉन्ट्रास्टचे गणित
+    val gradedBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(gradedBmp)
+
+    val cm = android.graphics.ColorMatrix()
+    val sharpnessWeight: Float
+
+    when (mode) {
+        "Natural" -> {
+            // 🌿 Natural: १००% नैसर्गिक रंग, शून्य अतिरिक्त सॅच्युरेशन, हलकी क्लॅरिटी
+            cm.setSaturation(1.0f)
+            val mat = android.graphics.ColorMatrix(floatArrayOf(
+                1.02f, 0f, 0f, 0f, 0f,
+                0f, 1.02f, 0f, 0f, 0f,
+                0f, 0f, 1.02f, 0f, 0f,
+                0f, 0f, 0f, 1f, 0f
+            ))
+            cm.postConcat(mat)
+            sharpnessWeight = 0.28f // सौम्य नैसर्गिक शार्पनेस
+        }
+        "Ultra" -> {
+            // ⚡ Ultra: मायक्रो-डिटेल्स + नियंत्रित कॉन्ट्रास्ट (शेडोज रिकव्हरी)
+            cm.setSaturation(1.10f)
+            val mat = android.graphics.ColorMatrix(floatArrayOf(
+                1.14f, 0f, 0f, 0f, -4f,
+                0f, 1.15f, 0f, 0f, -3f,
+                0f, 0f, 1.14f, 0f, -4f,
+                0f, 0f, 0f, 1f, 0f
+            ))
+            cm.postConcat(mat)
+            sharpnessWeight = 0.90f // कमाल तीक्ष्ण डिटेल्स
+        }
+        else -> {
+            // 💎 Crystal (डीफॉल्ट): 0.65f शार्पनेस + रसरशीत व हलकेसे गडद रंग
+            cm.setSaturation(1.16f)
+            val mat = android.graphics.ColorMatrix(floatArrayOf(
+                1.10f, 0f, 0f, 0f, -5f,
+                0f, 1.10f, 0f, 0f, -4f,
+                0f, 0f, 1.10f, 0f, -5f,
+                0f, 0f, 0f, 1f, 0f
+            ))
+            cm.postConcat(mat)
+            sharpnessWeight = 0.65f // अचूक अनशार्प शार्पनेस
+        }
+    }
+
+    val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
+        colorFilter = android.graphics.ColorMatrixColorFilter(cm)
+    }
+    canvas.drawBitmap(src, 0f, 0f, paint)
+
+    // २. Unsharp Detail Sharpening
+    val pixels = IntArray(w * h)
+    gradedBmp.getPixels(pixels, 0, w, 0, 0, w, h)
+    val outPixels = pixels.copyOf()
+
+    for (y in 1 until h - 1) {
+        val offset = y * w
+        for (x in 1 until w - 1) {
+            val idx = offset + x
+            val c = pixels[idx]
+            val u = pixels[idx - w]
+            val d = pixels[idx + w]
+            val l = pixels[idx - 1]
+            val r = pixels[idx + 1]
+
+            val a = (c ushr 24) and 255
+            val cr = (c shr 16) and 255
+            val cg = (c shr 8) and 255
+            val cb = c and 255
+
+            val nr = (((u shr 16) and 255) + ((d shr 16) and 255) + ((l shr 16) and 255) + ((r shr 16) and 255)) / 4f
+            val ng = (((u shr 8) and 255) + ((d shr 8) and 255) + ((l shr 8) and 255) + ((r shr 8) and 255)) / 4f
+            val nb = ((u and 255) + (d and 255) + (l and 255) + (r and 255)) / 4f
+
+            val red = (cr + (cr - nr) * sharpnessWeight).toInt().coerceIn(0, 255)
+            val green = (cg + (cg - ng) * sharpnessWeight).toInt().coerceIn(0, 255)
+            val blue = (cb + (cb - nb) * sharpnessWeight).toInt().coerceIn(0, 255)
+
+            outPixels[idx] = (a shl 24) or (red shl 16) or (green shl 8) or blue
+        }
+    }
+
+    val output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    output.setPixels(outPixels, 0, w, 0, 0, w, h)
+    gradedBmp.recycle()
+    return output
+}
+
+fun smartCropAspectRatio(src: Bitmap, aspect: String, isPortrait: Boolean): Bitmap {
+    val w = src.width
+    val h = src.height
+
+    if (aspect == "1:1") {
+        val s = minOf(w, h)
+        return Bitmap.createBitmap(src, (w - s) / 2, (h - s) / 2, s, s)
+    }
+
+    val ratio = when (aspect) {
+        "Full" -> if (isPortrait) (9f / 20f) else (20f / 9f)
+        "16:9" -> if (isPortrait) (9f / 16f) else (16f / 9f)
+        else -> if (isPortrait) (3f / 4f) else (4f / 3f)
+    }
+
+    val currentRatio = w.toFloat() / h.toFloat()
+
+    return if (currentRatio > ratio) {
+        val targetWidth = (h * ratio).toInt()
+        val xOffset = ((w - targetWidth) / 2).coerceAtLeast(0)
+        Bitmap.createBitmap(src, xOffset, 0, targetWidth.coerceAtMost(w), h)
+    } else {
+        val targetHeight = (w / ratio).toInt()
+        val yOffset = ((h - targetHeight) / 2).coerceAtLeast(0)
+        Bitmap.createBitmap(src, 0, yOffset, w, targetHeight.coerceAtMost(h))
+    }
+}
