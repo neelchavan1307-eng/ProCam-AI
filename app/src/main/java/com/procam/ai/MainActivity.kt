@@ -1550,96 +1550,233 @@ fun captureProcessedPhoto(
 }
 
 // 💎 ३ Quality Modes इंजिन (Natural, Crystal, Ultra)
-fun applyQualityModeEngine(src: Bitmap, mode: String): Bitmap {
+fun applyCrystalClarityV2(
+    src: Bitmap,
+    mode: String = "Crystal"
+): Bitmap {
+
+    require(!src.isRecycled) {
+        "Source bitmap is recycled"
+    }
+
     val w = src.width
     val h = src.height
 
-    // १. रंगांचे व कॉन्ट्रास्टचे गणित
-    val gradedBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-    val canvas = android.graphics.Canvas(gradedBmp)
+    require(w > 0 && h > 0) {
+        "Invalid bitmap dimensions"
+    }
 
-    val cm = android.graphics.ColorMatrix()
-    val sharpnessWeight: Float
+    var sharpnessWeight = 0.55f
+
+    // ==================================
+    // 1. COLOR GRADING ENGINE
+    // ==================================
+
+    val cm = ColorMatrix()
 
     when (mode) {
+
         "Natural" -> {
-            // 🌿 Natural: १००% नैसर्गिक रंग, शून्य अतिरिक्त सॅच्युरेशन, हलकी क्लॅरिटी
+
+            // 🌿 NATURAL MODE
+
             cm.setSaturation(1.0f)
-            val mat = android.graphics.ColorMatrix(floatArrayOf(
-                1.02f, 0f, 0f, 0f, 0f,
-                0f, 1.02f, 0f, 0f, 0f,
-                0f, 0f, 1.02f, 0f, 0f,
-                0f, 0f, 0f, 1f, 0f
-            ))
+
+            val mat = ColorMatrix(
+                floatArrayOf(
+                    1.01f, 0f, 0f, 0f, 0f,
+                    0f, 1.01f, 0f, 0f, 0f,
+                    0f, 0f, 1.01f, 0f, 0f,
+                    0f, 0f, 0f, 1f, 0f
+                )
+            )
+
             cm.postConcat(mat)
-            sharpnessWeight = 0.28f // सौम्य नैसर्गिक शार्पनेस
+
+            sharpnessWeight = 0.25f
         }
+
         "Ultra" -> {
-            // ⚡ Ultra: मायक्रो-डिटेल्स + नियंत्रित कॉन्ट्रास्ट (शेडोज रिकव्हरी)
-            cm.setSaturation(1.10f)
-            val mat = android.graphics.ColorMatrix(floatArrayOf(
-                1.14f, 0f, 0f, 0f, -4f,
-                0f, 1.15f, 0f, 0f, -3f,
-                0f, 0f, 1.14f, 0f, -4f,
-                0f, 0f, 0f, 1f, 0f
-            ))
+
+            // ⚡ ULTRA MODE
+
+            cm.setSaturation(1.08f)
+
+            val mat = ColorMatrix(
+                floatArrayOf(
+                    1.08f, 0f, 0f, 0f, -10f,
+                    0f, 1.08f, 0f, 0f, -10f,
+                    0f, 0f, 1.08f, 0f, -10f,
+                    0f, 0f, 0f, 1f, 0f
+                )
+            )
+
             cm.postConcat(mat)
-            sharpnessWeight = 0.90f // कमाल तीक्ष्ण डिटेल्स
+
+            sharpnessWeight = 0.55f
         }
+
         else -> {
-            // 💎 Crystal (डीफॉल्ट): 0.65f शार्पनेस + रसरशीत व हलकेसे गडद रंग
-            cm.setSaturation(1.25f)
-            val mat = android.graphics.ColorMatrix(floatArrayOf(
-                1.10f, 0f, 0f, 0f, -5f,
-                0f, 1.10f, 0f, 0f, -4f,
-                0f, 0f, 1.10f, 0f, -5f,
-                0f, 0f, 0f, 1f, 0f
-            ))
+
+            // 💎 CRYSTAL MODE
+
+            cm.setSaturation(1.15f)
+
+            val mat = ColorMatrix(
+                floatArrayOf(
+                    1.09f, 0f, 0f, 0f, -11f,
+                    0f, 1.09f, 0f, 0f, -11f,
+                    0f, 0f, 1.09f, 0f, -11f,
+                    0f, 0f, 0f, 1f, 0f
+                )
+            )
+
             cm.postConcat(mat)
-            sharpnessWeight = 0.65f // अचूक अनशार्प शार्पनेस
+
+            sharpnessWeight = 0.65f
         }
     }
 
-    val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
-        colorFilter = android.graphics.ColorMatrixColorFilter(cm)
-    }
-    canvas.drawBitmap(src, 0f, 0f, paint)
+    // ==================================
+    // 2. COLOR FILTER
+    // ==================================
 
-    // २. Unsharp Detail Sharpening
-    val pixels = IntArray(w * h)
-    gradedBmp.getPixels(pixels, 0, w, 0, 0, w, h)
-    val outPixels = pixels.copyOf()
+    val output = Bitmap.createBitmap(
+        w,
+        h,
+        Bitmap.Config.ARGB_8888
+    )
+
+    val paint = Paint(
+        Paint.FILTER_BITMAP_FLAG
+    ).apply {
+
+        colorFilter = ColorMatrixColorFilter(cm)
+
+    }
+
+    Canvas(output).drawBitmap(
+        src,
+        0f,
+        0f,
+        paint
+    )
+
+    // ==================================
+    // 3. MEMORY OPTIMIZED SHARPENING
+    // ==================================
+
+    if (w < 3 || h < 3) {
+        return output
+    }
+
+    val topRow = IntArray(w)
+    val centerRow = IntArray(w)
+    val bottomRow = IntArray(w)
+
+    var pendingRow: IntArray? = null
 
     for (y in 1 until h - 1) {
-        val offset = y * w
+
+        // Original neighboring rows read first.
+        output.getPixels(
+            topRow, 0, w,
+            0, y - 1, w, 1
+        )
+
+        output.getPixels(
+            centerRow, 0, w,
+            0, y, w, 1
+        )
+
+        output.getPixels(
+            bottomRow, 0, w,
+            0, y + 1, w, 1
+        )
+
+        // Write previous row only after reading it.
+        pendingRow?.let {
+
+            output.setPixels(
+                it, 0, w,
+                0, y - 1, w, 1
+            )
+
+        }
+
+        val resultRow = centerRow.copyOf()
+
         for (x in 1 until w - 1) {
-            val idx = offset + x
-            val c = pixels[idx]
-            val u = pixels[idx - w]
-            val d = pixels[idx + w]
-            val l = pixels[idx - 1]
-            val r = pixels[idx + 1]
+
+            val c = centerRow[x]
+
+            val u = topRow[x]
+            val d = bottomRow[x]
+
+            val l = centerRow[x - 1]
+            val r = centerRow[x + 1]
 
             val a = (c ushr 24) and 255
+
             val cr = (c shr 16) and 255
             val cg = (c shr 8) and 255
             val cb = c and 255
 
-            val nr = (((u shr 16) and 255) + ((d shr 16) and 255) + ((l shr 16) and 255) + ((r shr 16) and 255)) / 4f
-            val ng = (((u shr 8) and 255) + ((d shr 8) and 255) + ((l shr 8) and 255) + ((r shr 8) and 255)) / 4f
-            val nb = ((u and 255) + (d and 255) + (l and 255) + (r and 255)) / 4f
+            // Neighbor average
+            val nr = (
+                ((u shr 16) and 255) +
+                ((d shr 16) and 255) +
+                ((l shr 16) and 255) +
+                ((r shr 16) and 255)
+            ) / 4f
 
-            val red = (cr + (cr - nr) * sharpnessWeight).toInt().coerceIn(0, 255)
-            val green = (cg + (cg - ng) * sharpnessWeight).toInt().coerceIn(0, 255)
-            val blue = (cb + (cb - nb) * sharpnessWeight).toInt().coerceIn(0, 255)
+            val ng = (
+                ((u shr 8) and 255) +
+                ((d shr 8) and 255) +
+                ((l shr 8) and 255) +
+                ((r shr 8) and 255)
+            ) / 4f
 
-            outPixels[idx] = (a shl 24) or (red shl 16) or (green shl 8) or blue
+            val nb = (
+                (u and 255) +
+                (d and 255) +
+                (l and 255) +
+                (r and 255)
+            ) / 4f
+
+            // Detail sharpening
+            val red = (
+                cr + (cr - nr) * sharpnessWeight
+            ).roundToInt().coerceIn(0, 255)
+
+            val green = (
+                cg + (cg - ng) * sharpnessWeight
+            ).roundToInt().coerceIn(0, 255)
+
+            val blue = (
+                cb + (cb - nb) * sharpnessWeight
+            ).roundToInt().coerceIn(0, 255)
+
+            resultRow[x] =
+                (a shl 24) or
+                (red shl 16) or
+                (green shl 8) or
+                blue
         }
+
+        pendingRow = resultRow
     }
 
-    val output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-    output.setPixels(outPixels, 0, w, 0, 0, w, h)
-    gradedBmp.recycle()
+    // Write the final processed row.
+    pendingRow?.let {
+
+        output.setPixels(
+            it, 0, w,
+            0, h - 2, w, 1
+        )
+
+    }
+
     return output
 }
 
