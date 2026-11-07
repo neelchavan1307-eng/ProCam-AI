@@ -602,3 +602,372 @@ fun PureCinemaCameraApp(registerVolumeTrigger: (() -> Unit) -> Unit) {
                 }
             }
         }
+// -------------------------------------------------------------
+        // 🔥 उजव्या बाजूला फ्लोटिंग बाण आणि RGB डॉट
+        // -------------------------------------------------------------
+        Row(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clickable { isFilterSidebarOpen = !isFilterSidebarOpen }
+                    .rotate(uiRotation)
+                    .background(Color(0x66FFFFFF), CircleShape)
+                    .border(1.5.dp, Color.White.copy(alpha = 0.85f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (isFilterSidebarOpen) "▶" else "◀",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clickable { isColorReadingOpen = !isColorReadingOpen }
+                    .rotate(uiRotation)
+                    .background(Color(0x66FFFFFF), CircleShape)
+                    .border(1.5.dp, Color.White.copy(alpha = 0.85f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .background(
+                            Brush.sweepGradient(
+                                listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)
+                            ),
+                            CircleShape
+                        )
+                )
+            }
+        }
+
+        // 🎨 COLOR READING OPTION विंडो
+        AnimatedVisibility(
+            visible = isColorReadingOpen,
+            enter = fadeIn() + slideInHorizontally { it },
+            exit = fadeOut() + slideOutHorizontally { it },
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(16.dp)
+                .rotate(uiRotation)
+        ) {
+            val currentColor = Color(
+                ((redValue + tempValue * 0.5f + tintValue * 0.3f).coerceIn(0f, 255f)).toInt(),
+                ((greenValue - tintValue * 0.5f).coerceIn(0f, 255f)).toInt(),
+                ((blueValue - tempValue * 0.5f + tintValue * 0.3f).coerceIn(0f, 255f)).toInt()
+            )
+            val hexCode = String.format("#%02X%02X%02X", currentColor.red.toInt() * 255, currentColor.green.toInt() * 255, currentColor.blue.toInt() * 255)
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xF2161A22)),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C3240)),
+                modifier = Modifier.width(310.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("LIVE COLOR GRADING", color = Color.White, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        Text("✕", color = Color.Gray, fontSize = 14.sp, modifier = Modifier.clickable { isColorReadingOpen = false }.padding(4.dp))
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(95.dp)
+                            .background(Color(0xFF0F1218), RoundedCornerShape(10.dp))
+                            .border(1.dp, Color(0xFF242A36), RoundedCornerShape(10.dp))
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val w = size.width
+                                val h = size.height
+                                drawLine(Color(0xFF0A84FF), Offset(w * 0.15f, h * 0.9f), Offset(w * 0.25f, h * 0.15f), 3.dp.toPx())
+                                drawLine(Color(0xFF0A84FF), Offset(w * 0.25f, h * 0.15f), Offset(w * 0.45f, h * 0.8f), 3.dp.toPx())
+                                drawLine(Color(0xFFFF3B30), Offset(w * 0.35f, h * 0.85f), Offset(w * 0.50f, h * 0.35f), 3.dp.toPx())
+                                drawLine(Color(0xFFFF3B30), Offset(w * 0.50f, h * 0.35f), Offset(w * 0.85f, h * 0.9f), 3.dp.toPx())
+                                drawLine(Color(0xFFFFD60A), Offset(w * 0.55f, h * 0.75f), Offset(w * 0.70f, h * 0.60f), 2.dp.toPx())
+                            }
+                            Text(hexCode, color = Color.White, fontSize = 11.sp, modifier = Modifier.align(Alignment.TopEnd).padding(2.dp))
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .width(60.dp)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(currentColor)
+                                .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text("Temp:", color = Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.width(42.dp))
+                        Slider(
+                            value = tempValue,
+                            onValueChange = { tempValue = it },
+                            valueRange = -100f..100f,
+                            colors = SliderDefaults.colors(thumbColor = Color(0xFFFFCC00), activeTrackColor = Color(0xFFFF9500), inactiveTrackColor = Color(0xFF0A84FF)),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text("${tempValue.toInt()}", color = Color.White, fontSize = 10.sp, modifier = Modifier.width(26.dp))
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text("Tint:", color = Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.width(42.dp))
+                        Slider(
+                            value = tintValue,
+                            onValueChange = { tintValue = it },
+                            valueRange = -100f..100f,
+                            colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFFAF52DE), inactiveTrackColor = Color(0xFF34C759)),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text("${tintValue.toInt()}", color = Color.White, fontSize = 10.sp, modifier = Modifier.width(26.dp))
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text("Sat:", color = Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.width(42.dp))
+                        Slider(
+                            value = satValue,
+                            onValueChange = { satValue = it },
+                            valueRange = -100f..100f,
+                            colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color(0xFFFF2D55), inactiveTrackColor = Color.Gray),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text("${satValue.toInt()}", color = Color.White, fontSize = 10.sp, modifier = Modifier.width(26.dp))
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Reset All", color = Color(0xFFFFCC00), fontSize = 11.sp, modifier = Modifier.clickable {
+                            tempValue = 0f; tintValue = 0f; satValue = 0f
+                        }.padding(4.dp))
+                        Text("Real-Time Engine", color = Color.Gray, fontSize = 10.sp)
+                    }
+                }
+            }
+        }
+
+        // 🎬 वर उचललेला फिल्टर्स साइडबार
+        AnimatedVisibility(
+            visible = isFilterSidebarOpen,
+            enter = fadeIn() + slideInHorizontally { it },
+            exit = fadeOut() + slideOutHorizontally { it },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 75.dp, top = 70.dp)
+                .fillMaxHeight(0.50f)
+                .width(185.dp)
+                .rotate(uiRotation)
+        ) {
+            val allFiltersList = listOf(
+                "Normal" to "🚫",
+                "💧 Lens Blur" to "💧",
+                "Cinematic Look (9-in-1)" to "🎬",
+                "🥽 NVG Green" to "🥽",
+                "🌙 Color Night" to "🌙",
+                "Video Glow" to "✨",
+                "Retro Look" to "🎞️",
+                "Urban Night" to "🌃",
+                "4K Quality" to "⚡",
+                "Standard" to "🍎",
+                "Rich Contrast" to "🎭",
+                "Vibrant" to "🌈",
+                "Warm" to "☀️",
+                "Cool" to "❄️",
+                "Noir" to "🖤",
+                "Astro" to "🌌",
+                "Macro" to "🔬"
+            )
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xF2141822)),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C3240)),
+                modifier = Modifier.width(185.dp).fillMaxHeight()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(8.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("FILTERS (UP-DOWN)", color = Color.Gray, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.padding(4.dp))
+                    allFiltersList.forEach { (name, icon) ->
+                        val isSel = activeFilter == name
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(if (isSel) Color(0xFFFFCC00) else Color(0xFF1E2433), RoundedCornerShape(10.dp))
+                                .border(1.dp, if (isSel) Color.White else Color.Transparent, RoundedCornerShape(10.dp))
+                                .clickable {
+                                    activeFilter = name
+                                    isFilterSidebarOpen = false
+                                }
+                                .padding(horizontal = 10.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(icon, fontSize = 13.sp)
+                            Text(
+                                text = name,
+                                color = if (isSel) Color.Black else Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSel) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 🔥 टॉप बार + ३ Quality Modes (Natural, Crystal, Ultra)
+        // -------------------------------------------------------------
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(top = 4.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = {
+                        isFlashOn = !isFlashOn
+                        triggerPocoHaptics(context, 1)
+                    },
+                    modifier = Modifier.size(34.dp).rotate(uiRotation).background(if (isFlashOn) Color(0xFFFFCC00) else Color(0x66000000), CircleShape)
+                ) {
+                    Text(if (isFlashOn) "⚡" else "⚡", color = if (isFlashOn) Color.Black else Color.White)
+                }
+
+                // 💎 ३ नवीन Quality Modes Switcher (Natural, Crystal, Ultra)
+                Row(
+                    modifier = Modifier
+                        .rotate(uiRotation)
+                        .background(Color(0x88000000), RoundedCornerShape(20.dp))
+                        .border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(20.dp))
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    listOf("Natural" to "🌿", "Crystal" to "💎", "Ultra" to "⚡").forEach { (qMode, icon) ->
+                        val isSel = qualityMode == qMode
+                        Box(
+                            modifier = Modifier
+                                .background(if (isSel) Color(0xFFFFCC00) else Color.Transparent, RoundedCornerShape(16.dp))
+                                .clickable {
+                                    qualityMode = qMode
+                                    triggerPocoHaptics(context, 1)
+                                    Toast.makeText(context, "$icon $qMode Mode", Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(horizontal = 7.dp, vertical = 3.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "$icon $qMode",
+                                color = if (isSel) Color.Black else Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = if (isSel) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .rotate(uiRotation)
+                        .background(Color(0xDDFFCC00), RoundedCornerShape(14.dp))
+                        .clickable { aiPhotoPickerLauncher.launch("image/*") }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text("⚡ AI 4K", color = Color.Black, fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .rotate(uiRotation)
+                        .background(Color(0x66000000), CircleShape)
+                        .clickable { isQuickMenuOpen = !isQuickMenuOpen },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(if (isQuickMenuOpen) "▲" else "▼", color = Color.White, fontSize = 12.sp)
+                }
+            }
+        }
+
+        // Quick Settings Dropdown
+        AnimatedVisibility(
+            visible = isQuickMenuOpen,
+            modifier = Modifier.padding(top = 80.dp, start = 16.dp, end = 16.dp).align(Alignment.TopCenter).rotate(uiRotation)
+        ) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xF2141822)),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C3240))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    val tileRows = listOf(
+                        listOf(
+                            QuickMenuTile("HDR", if (isHDROn) "On" else "Off", isHDROn) { isHDROn = !isHDROn },
+                            QuickMenuTile("AI Cam", if (isAICameraOn) "On" else "Off", isAICameraOn) { isAICameraOn = !isAICameraOn },
+                            QuickMenuTile("Aspect", selectedAspect, true) {
+                                selectedAspect = when(selectedAspect) { "Full" -> "4:3"; "4:3" -> "16:9"; "16:9" -> "1:1"; else -> "Full" }
+                            },
+                            QuickMenuTile("Timer", if (timerDuration == 0) "Off" else "${timerDuration}s", timerDuration > 0) {
+                                timerDuration = when(timerDuration) { 0 -> 3; 3 -> 5; 5 -> 10; else -> 0 }
+                            }
+                        ),
+                        listOf(
+                            QuickMenuTile("Grid #", if (isGridOn) "On" else "Off", isGridOn) { isGridOn = !isGridOn },
+                            QuickMenuTile("Level ⊝", if (isLevelOn) "On" else "Off", isLevelOn) { isLevelOn = !isLevelOn },
+                            QuickMenuTile("Watermark", if (isWatermarkOn) "On" else "Off", isWatermarkOn) { isWatermarkOn = !isWatermarkOn },
+                            QuickMenuTile("🔑 AI Token", if (apiToken.isNotBlank()) "Active" else "Set Token", apiToken.isNotBlank()) {
+                                showTokenDialog = true
+                            }
+                        )
+                    )
+
+                    tileRows.forEach { rowTiles ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            rowTiles.forEach { tile ->
+                                Column(
+                                    modifier = Modifier
+                                        .size(72.dp, 58.dp)
+                                        .background(if (tile.isActive) Color(0x33FFCC00) else Color(0xFF1E2433), RoundedCornerShape(10.dp))
+                                        .border(1.dp, if (tile.isActive) Color(0xFFFFCC00) else Color.Transparent, RoundedCornerShape(10.dp))
+                                        .clickable { tile.action() }
+                                        .padding(4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(tile.title, color = if (tile.isActive) Color(0xFFFFCC00) else Color.White, fontSize = 11.sp, fontWeight = and
